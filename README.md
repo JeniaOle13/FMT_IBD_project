@@ -1,10 +1,11 @@
 # FMT-IBD-project
 
-![](https://github.com/JeniaOle13/FMT_IBD_project/blob/main/manuscript/Figure_1.png)
-
 This repository contains the reproducible analysis for the study:
 
 **Dynamic Alterations in Stool Microbiota Composition Following Fecal Transplantation in Patients with Inflammatory Bowel Disease**
+
+![](https://github.com/JeniaOle13/FMT_IBD_project/blob/main/manuscript/Figure_1.png)
+Study design (Created with BioRender.com). (A) Schematic representation of the patient treatment scheme; colours denote disease groups. (B) Longitudinal stool sampling scheme; the magenta marker indicates the time point of the FMT procedure. (C) Stool sampling time points for each patient, with patient IDs shown on the left; colours denote disease groups. FMT, fecal microbiota transplantation.
 
 Quarto report available [here](https://jeniaole13.github.io/FMT_IBD_project/)
 
