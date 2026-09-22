@@ -1,0 +1,15 @@
+Patient_id	CRB before	CRB after 6-12 month	Calprotectin before	Calprotectin after 6-12 month	CI pre-FMT	CI post-FMT	Treatment
+CD1	0.1	NA	103	53	5	2	5-ASA, Glucocorticoids
+CD5	11.4	5.7	123	65	38	10	5-ASA, Glucocorticoids
+CD16	3.2	NA	78	24	5	1	5-ASA
+CD17	6.1	0.9	68	32	7	1	5-ASA, Glucocorticoids
+CD27	5.8	3.1	60	21	6	4	5-ASA, Glucocorticoids
+CD28	5.2	4.3	44	29	5	1	5-ASA
+CD35	3.9	0.8	36	34	5	3	5-ASA
+CD38	0.33	1.2	51	44	5	2	5-ASA
+UC3	12.7	7.9	314	163	2	1	5-ASA,Glucocorticoids
+UC8	5.2	NA	247	28	3	0	5-ASA
+UC15	6.9	4.6	218	88	2	0	5-ASA
+UC22	1.4	12.3	169	412	2	1	5-ASA
+UC33	8.2	2.1	438	81	3	1	5-ASA, Glucocorticoids
+UC36	1.4	0.8	92	38	2	0	5-ASA

@@ -1,0 +1,3380 @@
+---
+format: html
+editor: source
+---
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+set.seed(10)
+```
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+filter_zeros <- function(df, k){
+    num.zeros <- colSums(df==0)
+    save.zeros  <-  (num.zeros<round(nrow(df)*k))
+    df.no_zeros  <-  df[,(save.zeros==TRUE)]
+    df.no_zeros <- df.no_zeros[order(colSums(df.no_zeros), decreasing = T)]
+    return(df.no_zeros)
+}
+
+veganCovEllipse <- function (cov, center = c(0, 0), scale = 1, npoints = 100) 
+{
+    theta <- (0:npoints) * 2 * pi/npoints
+    Circle <- cbind(cos(theta), sin(theta))
+    t(center + scale * t(Circle %*% chol(cov)))
+}
+```
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+library(ggplot2)
+library(pheatmap)
+library(vegan)
+library(stringr)
+library(dplyr)
+library(tidyr)
+library(reshape2)
+library(RColorBrewer)
+library(DT)
+library(downloadthis)
+library(lmerTest)
+library(ecodist)
+library(performance)
+library(emmeans)
+library(piano)
+library(effectsize)
+library(simr)
+library(pwr)
+
+source("src/mini_compositions_lib.R")
+```
+
+# Study design and analytical workflow 
+```{mermaid}
+flowchart LR
+      A[("Metaphlan3<br/>profiles")] --> B{"filter_zeros"}
+      B --> C{"Alpha diversity<br/>(Shannon)"} & D{"Beta diversity<br/>(Aitchison)"}
+      C --> E["LMM / Random-effects test (RANOVA)"]
+
+      D --> F["NMDS"]
+      D --> G["PERMDISP"]
+      D --> H["PERMANOVA<br/>(strata = source_id)"]
+      D --> I["MRM"]
+
+      D --> J["Distance<br/>from baseline"]
+      D --> K["Distance<br/>from donor"]
+      J --> L["LMM + emtrends"]
+      K --> L
+
+      A --> M["DEICODE<br/>(+ Franzosa_2019)"]
+      M --> N["Axis 1<br/>trajectories<br/>CD vs UC"]
+      N --> L
+
+      A --> O["Songbird<br/>(taxa + KO)"]
+      O --> P["Log ratios<br/>per group"]
+      P --> L
+      P --> Q["GSEA<br/>(KO level)"]
+
+      R[("RECAST + Metaphlan3<br/>colonisation")] --> S["N donor species<br/>per sample"]
+      S --> L
+
+      L --> T["Effect size<br/>+ Power analysis"]
+```
+
+<p style="text-align: justify;">
+Raw taxonomic profiles obtained with MetaPhlAn3 (CHOCOPhlAn v201901) were filtered to remove rare and low-prevalence taxa, and then used to compute alpha diversity (Shannon index) and beta diversity (Aitchison distance) with vegan v2.7.6. The Aitchison distance matrix drove several complementary analyses: ordination with NMDS for visualisation (vegan v2.7.6), PERMDISP to verify homogeneity of multivariate dispersions (vegan v2.7.6), PERMANOVA with patient stratification to test within-subject factors (time point, clinical index) (vegan v2.7.6), and MRM (Multiple Regression on distance Matrices) to test between-subject factors (disease, donor) while controlling for repeated measures (ecodist v2.1.3). Distances from baseline and from donor were computed for each post-FMT sample and modelled with linear mixed models (lme4 v2.0.6 / lmerTest v3.2.1) and estimated marginal trends (emmeans v2.0.4). To place our cohort in the context of an independent IBD reference dataset, a DEICODE robust Aitchison PCA (v0.2.3) was performed on merged data, providing a shared ordination space to formally compare temporal trajectories between CD and UC. Differential ranking of taxa and functional pathways (KO) by their association with time was carried out using Songbird (v1.0.3), separately within each disease group, complemented by GSEA on the KO-level data (piano v2.28.0). RECAST (v1.0.0) was used to identify donor-derived species, summarised as the number of colonising species per sample and analysed with the same modelling framework. Effect sizes were quantified with performance v0.18.1 and effectsize v1.0.3. Finally, post-hoc power analysis was performed for all key models (pwr v1.3.0 and simr v1.0.11) to quantify the sensitivity of our design and to interpret non-significant results appropriately. Data manipulation and visualisation were performed with dplyr v1.2.1, tidyr v1.3.2, reshape2 v1.4.5, stringr v1.6.0, ggplot2 v4.0.3, pheatmap v1.0.13, RColorBrewer v1.1.3, DT v0.34.0, and downloadthis v0.5.0. All analyses were conducted in R v4.6.1 and reported using Quarto v1.9.36.
+<p>
+
+# Software and resources
+
+## Data processing and taxonomic profiling
+1. MetaPhlAn3 (CHOCOPhlAn v201901) — taxonomic profiling of metagenomic data: <https://github.com/biobakery/metaphlan>
+2. HUMAnN2 v2.8.1 — functional profiling (KO level): <https://github.com/biobakery/humann>
+3. RECAST v1.0.0 — donor-derived species identification: <https://github.com/ctlab/RECAST>
+4. DEICODE v0.2.3 — robust Aitchison PCA: <https://github.com/biocore/DEICODE>
+5. Songbird v1.0.3 — differential ranking of taxa and functions: <https://github.com/biocore/songbird>
+
+## Statistical analysis and modelling (R packages)
+6. vegan v2.7.6 — PERMANOVA, PERMDISP, NMDS, alpha diversity: <https://github.com/vegandevs/vegan>
+7. ecodist v2.1.3 — MRM (Multiple Regression on distance Matrices): <https://github.com/cran/ecodist>
+8. lme4 v2.0.6 / lmerTest v3.2.1 — linear mixed models: <https://github.com/lme4/lme4>
+9. emmeans v2.0.4 — estimated marginal means and trends: <https://github.com/rvlenth/emmeans>
+10. performance v0.18.1 — R², model diagnostics, multicollinearity: <https://github.com/easystats/performance>
+11. effectsize v1.0.3 — standardised coefficients and effect sizes: <https://github.com/easystats/effectsize>
+12. pwr v1.3.0 — power analysis for fixed-effects models: <https://github.com/cran/pwr>
+13. simr v1.0.11 — power analysis for mixed models: <https://github.com/pitakakariki/simr>
+14. piano v2.28.0 — gene set enrichment analysis (GSEA): <https://varemo.github.io/piano/>
+
+## Visualisation and reporting (R packages)
+15. ggplot2 v4.0.3 — general plotting: <https://github.com/tidyverse/ggplot2>
+16. pheatmap v1.0.13 — heatmaps: <https://github.com/raivokolde/pheatmap>
+17. RColorBrewer v1.1.3 — colour palettes: <https://github.com/cran/RColorBrewer>
+18. DT v0.34.0 — interactive tables: <https://github.com/rstudio/DT>
+19. downloadthis v0.5.0 — download buttons for plots: <https://github.com/fmmattioni/downloadthis>
+
+## Data manipulation (R packages)
+20. dplyr v1.2.1 — data manipulation (filter, select, mutate, summarise): <https://github.com/tidyverse/dplyr>
+21. tidyr v1.3.2 — data reshaping (pivot_longer, pivot_wider, separate, unite): <https://github.com/tidyverse/tidyr>
+22. reshape2 v1.4.5 — data reshaping (melt, cast): <https://github.com/cran/reshape2>
+23. stringr v1.6.0 — string manipulation (str_detect, str_replace, str_split): <https://github.com/tidyverse/stringr>
+
+## Reproducibility
+24. R v4.6.1 — statistical computing environment: <https://www.r-project.org>
+25. Quarto v1.9.36 — reproducible reporting: <https://quarto.org>
+
+# Data import and preprocessing
+<p style="text-align: justify;">
+A total of 50 stool samples were analysed, collected from 14 patients with inflammatory bowel disease (8 with Crohn's disease, 6 with ulcerative colitis) and 6 healthy donors. Patients received fecal microbiota transplantation (FMT) on top of standard anti-inflammatory therapy and were followed longitudinally across up to five time points, with time point 1 representing the pre-FMT baseline. For each patient, the assigned donor and the patient identity (source_id) were recorded. Raw sequencing yielded a total of 617,904,714 reads (mean ± SD: 11,034,013 ± 6,458,218 per sample), of which 449,911,866 reads passed quality filtering (mean ± SD: 8,034,140 ± 5,700,940 per sample). Sequencing statistics are summarised in Table 1, and sample metadata are provided in Table 2. The full Metaphlan3 taxonomic table is presented in Table 3, with species-level and phylum-level subsets shown in Tables 4 and 5, respectively.
+<p>
+
+## Sequencing statistic
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+seq_stat <- read.csv("data/seq_stat.csv")
+sra_id <- read.csv("data/sra.csv")
+
+seq_stat <- merge(sra_id[c(2,1)], seq_stat, by = 1)
+```
+
+```{r}
+#| echo: false
+datatable(seq_stat, 
+          caption = "Table 1. Sequencing and quality filtering statistics per sample.",
+          style = "bootstrap5", 
+          extensions = 'Buttons', 
+          options = list(dom = 'lBfrtip',
+                         buttons = c('csv', 'excel')))
+```
+
+## Metadata
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+metadata_ibd <- read.csv("data/metadata_ibd.txt", header = T, stringsAsFactors = F)
+metadata_ibd <- metadata_ibd[metadata_ibd$disease != "IBS",]
+metadata_ibd <- metadata_ibd[!metadata_ibd$df_sample %in% c("DONOR2_T2_B2", "DONOR3_T1_B1", "UC7_T1_B2", "UC7_T2_B2", "UC7_T3_B2", "CD35_T3_B7"),]
+rownames(metadata_ibd) <- 1:nrow(metadata_ibd)
+```
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+metadata_songbird <- read.csv("data/metadata_songbird.txt", stringsAsFactors = F, sep = "\t")
+metadata_songbird <- merge(metadata_songbird, metadata_ibd[c(1,5)], by = 1)
+```
+
+```{r}
+#| echo: false
+datatable(metadata_songbird, 
+          caption = "Table 2. Sample metadata and clinical characteristics.",
+          style = "bootstrap5", 
+          extensions = 'Buttons', 
+          options = list(dom = 'lBfrtip',
+                         buttons = c('csv', 'excel')))
+```
+
+## Metaphlan3 taxonomic annotation results
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+mpa_out <- read.table("data/mpa_out.txt", header = T, stringsAsFactors = F, sep = "\t", row.names = 1)
+```
+
+```{r}
+#| echo: false
+datatable(mpa_out, 
+          caption = "Table 3. Relative abundances of all taxa (MetaPhlAn3, full table).",
+          style = "bootstrap5", 
+          extensions = 'Buttons', 
+          options = list(dom = 'lBfrtip',
+                         buttons = c('csv', 'excel')))
+```
+
+### Species level
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+mpa.org <- mpa_out[which(!is.na(str_extract(colnames(mpa_out), "s__")))]
+colnames(mpa.org) <- sub("s__", "", sapply(str_split(colnames(mpa.org), "s__"), function(x) x[2]))
+colnames(mpa.org) <- gsub("\\.", "", colnames(mpa.org))
+
+mpa.org <- mpa.org[rownames(mpa.org) %in% metadata_ibd$df_sample,]
+mpa.org <- mpa.org[colSums(mpa.org) > 0]
+```
+
+```{r}
+#| echo: false
+datatable(mpa.org, 
+          caption = "Table 4. Species-level relative abundances (MetaPhlAn3).",
+          style = "bootstrap5", 
+          extensions = 'Buttons', 
+          options = list(dom = 'lBfrtip',
+                         buttons = c('csv', 'excel')))
+```
+
+### Phylum level
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+mpa.phyla <- mpa_out[which(!is.na(str_extract(colnames(mpa_out), "p__")))]
+colnames(mpa.phyla) <- sub("p__", "", sapply(str_split(colnames(mpa.phyla), "p__"), function(x) x[2]))
+mpa.phyla <- mpa.phyla[which(is.na(str_extract(colnames(mpa.phyla), "c__|o__|f__|g__|s__")))]
+mpa.phyla <- mpa.phyla[order(colSums(mpa.phyla), decreasing = T)]
+
+mpa.phyla <- mpa.phyla[rownames(mpa.phyla) %in% metadata_ibd$df_sample,]
+mpa.phyla <- mpa.phyla[colSums(mpa.phyla) > 0]
+```
+
+```{r}
+#| echo: false
+datatable(mpa.phyla, 
+          caption = "Table 5. Phylum-level relative abundances (MetaPhlAn3).",
+          style = "bootstrap5", 
+          extensions = 'Buttons', 
+          options = list(dom = 'lBfrtip',
+                         buttons = c('csv', 'excel')))
+```
+
+# Phylum-level composition and species heatmap
+<p style="text-align: justify;">
+In the Barplots section, phylum-level relative abundances were prepared for visualisation by retaining only taxa present in at least 80% of samples (filter_zeros), reshaping the table into long format, and merging it with the sample metadata. A shared colour palette was defined, and the levels of df_sample and source_id were fixed to ensure consistent ordering across panels. Stacked barplots were then generated separately for the CD, UC, and healthy donor groups. Each barplot displays the distribution of phyla for every patient across all available time points, faceted by patient (source_id). Figure 1 shows the CD group, Figure 2 the UC group, and Figure 3 the donor group. In addition, Figure 4 presents a heatmap of species-level relative abundances across all samples.
+<p>
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+mpa.phyla_2 <- filter_zeros(mpa.phyla, 0.8)
+
+mpa.phyla_2 <- cbind(Sample = rownames(mpa.phyla_2), mpa.phyla_2)
+mpa.phyla_2 <- reshape2::melt(mpa.phyla_2, id = c("Sample"))
+mpa.phyla_2 <- merge(metadata_ibd[-5], mpa.phyla_2, by = 1)
+mpa.phyla_2$variable <- as.character(mpa.phyla_2$variable)
+
+colours = c("#A54657",  "#582630", "#F7EE7F", "#4DAA57","#F1A66A","#F26157", "#F9ECCC", "#679289", "#33658A",
+             "#F6AE2D","#86BBD8")
+
+mpa.phyla_2$df_sample <- factor(mpa.phyla_2$df_sample, levels=unique(mpa.phyla_2$df_sample))
+
+mpa.phyla_2$source_id <- factor(mpa.phyla_2$source_id, levels = c("CD1", "CD5", "CD16", "CD17", "CD27", "CD28", "CD35", "CD38", 
+                                                                      "UC3", "UC8", "UC15", "UC22", "UC33", "UC36", 
+                                                                      "DONOR2", "DONOR3", "DONOR7", "SFM028", "SPORT17", "SPORT4"))
+```
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+phyla_barplot_CD <- ggplot(mpa.phyla_2[mpa.phyla_2$disease == "CD",], aes(x = time_point, fill = variable, y = value)) + 
+    geom_bar(stat = "identity", colour = "black") + 
+    theme(axis.text.x = element_text(angle = 90, size = 14, colour = "black", vjust = 0.5, hjust = 1, face= "bold"), 
+          axis.title.y = element_text(size = 16, face = "bold"), legend.title = element_text(size = 16, face = "bold"), 
+          legend.text = element_text(size = 12, face = "bold", colour = "black"), 
+          axis.text.y = element_text(colour = "black", size = 12, face = "bold")) + 
+    scale_y_continuous(expand = c(0,0)) + 
+    labs(x = "Time points", y = "Relative Abundance (%)", fill = "Phylum")+
+    scale_fill_manual(values = colours)+
+    facet_grid(~source_id)+
+    theme_classic()
+
+phyla_barplot_UC <- ggplot(mpa.phyla_2[mpa.phyla_2$disease == "UC",], aes(x = time_point, fill = variable, y = value)) + 
+      geom_bar(stat = "identity", colour = "black") + 
+      theme(axis.text.x = element_text(angle = 90, size = 14, colour = "black", vjust = 0.5, hjust = 1, face= "bold"), 
+            axis.title.y = element_text(size = 16, face = "bold"), legend.title = element_text(size = 16, face = "bold"), 
+            legend.text = element_text(size = 12, face = "bold", colour = "black"), 
+            axis.text.y = element_text(colour = "black", size = 12, face = "bold")) + 
+      scale_y_continuous(expand = c(0,0)) + 
+      labs(x = "Time points", y = "Relative Abundance (%)", fill = "Phylum")+
+      scale_fill_manual(values = colours)+
+      facet_grid(~source_id)+
+      theme_classic()
+
+phyla_barplot_HEALTHY <- ggplot(mpa.phyla_2[mpa.phyla_2$disease == "HEALTHY",], aes(x = time_point, fill = variable, y = value)) + 
+      geom_bar(stat = "identity", colour = "black") + 
+      theme(axis.text.x = element_text(angle = 90, size = 14, colour = "black", vjust = 0.5, hjust = 1, face= "bold"), 
+            axis.title.y = element_text(size = 16, face = "bold"), legend.title = element_text(size = 16, face = "bold"), 
+            legend.text = element_text(size = 12, face = "bold", colour = "black"), 
+            axis.text.y = element_text(colour = "black", size = 12, face = "bold")) + 
+      scale_y_continuous(expand = c(0,0)) + 
+      labs(x = "Time points", y = "Relative Abundance (%)", fill = "Phylum")+
+      scale_fill_manual(values = colours)+
+      facet_grid(~source_id)+
+      theme_classic()
+```
+
+```{r fig.height=2.5, fig.width=10}
+#| echo: false
+#| message: false
+#| warning: false
+download_this(
+      phyla_barplot_CD,
+      output_name = "phyla_barplot_CD",
+      output_extension = ".pdf",
+      button_label = "PDF",
+      button_type = "primary"
+)
+```
+
+```{r fig.height=2.5, fig.width=10}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-cap: "Figure 1. Phylum-level composition in CD patients over time."
+phyla_barplot_CD
+```
+
+```{r fig.width=9, fig.height=2.5}
+#| echo: false
+#| message: false
+#| warning: false
+download_this(
+      phyla_barplot_UC,
+      output_name = "phyla_barplot_UC",
+      output_extension = ".pdf",
+      button_label = "PDF",
+      button_type = "primary"
+)
+```
+
+```{r fig.width=9, fig.height=2.5}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-cap: "Figure 2. Phylum-level composition in UC patients over time."
+phyla_barplot_UC
+```
+
+```{r fig.width=6.5, fig.height=2.5}
+#| echo: false
+#| message: false
+#| warning: false
+download_this(
+      phyla_barplot_HEALTHY,
+      output_name = "phyla_barplot_HEALTHY",
+      output_extension = ".pdf",
+      button_label = "PDF",
+      button_type = "primary"
+)
+```
+
+```{r fig.width=6.5, fig.height=2.5}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-cap: "Figure 3. Phylum-level composition in healthy donors."
+phyla_barplot_HEALTHY
+```
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+mpa.org.sbs <- filter_zeros(mpa.org, 0.8)
+```
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+annot <- metadata_ibd[c(1,3,5,6)]
+rownames(annot) <- annot$df_sample
+annot <- annot[-1]
+annot$clinical_index <- log(annot$clinical_index)
+colnames(annot)[2] <- "log_clinical_index"
+
+annot$disease[annot$disease == "HEALTHY"] <- "DONOR"
+
+heatmap_org <- pheatmap(t(log(mpa.org.sbs+0.01))[1:40,], color=brewer.pal(n = 11, name = "RdYlBu"), 
+         cutree_rows = 5, cutree_cols = 5, annotation_col = annot, show_colnames = F)
+
+# svg("figures/heatmap_org.svg", width=14, height=7)
+# heatmap_org
+# dev.off()
+```
+
+[Figure 4](figures/heatmap_org.svg)
+
+```{r fig.width=14, fig.height=7}
+#| echo: false
+#| fig-cap: "Figure 4. Species-level heatmap of all samples."
+heatmap_org
+```
+
+# Alpha diversity (Shannon index)
+<p style="text-align: justify;">
+The Shannon index was computed for each sample to characterize within-sample microbial diversity. Across all samples, the mean Shannon index was 2.53 ± 0.67. When stratified by group, the CD group showed a mean of 2.43 ± 0.70, the UC group 2.57 ± 0.70, and the healthy donor group 2.76 ± 0.45, indicating a trend towards higher alpha diversity in donors compared to IBD patients. To assess whether alpha diversity was associated with disease, time point, clinical index, or donor, a generalised linear model  was fitted on the IBD samples. None of the tested predictors reached statistical significance: disease (UC vs CD, β = −0.07, p = 0.80), time point (β = −0.06, p = 0.52), and clinical index (β = −0.02, p = 0.47) were all non-significant. Among donor levels, only SFM028_T1_B1 showed a borderline effect (β = −0.99, p = 0.052), while all other donors did not differ significantly from the reference. Individual patient trajectories of the Shannon index were visualised against the donor-derived reference range (mean ± SD) in Figure 5, which displays the Shannon index for each patient across the experimental groups; the mean donor range is highlighted by a rectangle.
+<p>
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+div <- diversity(mpa.org)
+div <- as.data.frame(div)
+```
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+colnames(div) <- "shannon"
+
+div <- merge(metadata_ibd, cbind(rownames(div), div), by = 1)
+div$disease <- factor(div$disease, levels = c("CD", "UC", "HEALTHY"))
+```
+
+```{r}
+#| echo: false
+datatable(div, 
+          caption = "Table 6. Alpha diversity (Shannon index) per sample.",
+          style = "bootstrap5", 
+          extensions = 'Buttons', 
+          options = list(dom = 'lBfrtip',
+                         buttons = c('csv', 'excel')))
+```
+
+### Linear mixed model
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+div_disease <- div[div$disease != "HEALTHY",]
+
+lmer.alpha <- lmer(shannon ~ disease + time_point + clinical_index + donor_id_manual + (1|source_id), data = div_disease)
+summary(lmer.alpha)
+```
+
+#### Random-effects test (RANOVA)
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+ranova(lmer.alpha)
+```
+
+### Linear model without random effects
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+glm.alpha <- glm(shannon ~ disease + time_point + clinical_index + donor_id_manual, data = div, family = "gaussian")
+summary(glm.alpha)
+```
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+donor_alpha_min <- mean(div$shannon[div$disease == "HEALTHY"])-sd(div$shannon[div$disease == "HEALTHY"])
+donor_alpha_max <- mean(div$shannon[div$disease == "HEALTHY"])+sd(div$shannon[div$disease == "HEALTHY"])
+```
+
+### Individual trajectories
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+shannon_plot <- ggplot()+
+    geom_line(div[div$disease != "HEALTHY",], mapping = aes(time_point, shannon, group = source_id, col = disease), size = 1, alpha = 0.33)+
+    stat_smooth(div[div$disease != "HEALTHY",], mapping = aes(time_point, shannon, col = disease), se = F)+
+    facet_wrap(~disease, ncol = 2)+
+    geom_rect(div[div$disease != "HEALTHY",], mapping = aes(xmin=1, xmax=5, ymin=donor_alpha_min, ymax=donor_alpha_max), color="darkgreen",alpha=0)+
+    ylab("Shannon index")+
+    xlab("time point")+
+    theme_bw()+
+    scale_color_brewer(palette="Set1")+
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+    theme(legend.position = "none")+
+    xlab("Time point")
+```
+
+```{r fig.width=6, fig.height=3}
+#| echo: false
+#| message: false
+#| warning: false
+download_this(
+      shannon_plot,
+      output_name = "shannon_plot",
+      output_extension = ".pdf",
+      button_label = "PDF",
+      button_type = "primary"
+)
+```
+
+```{r fig.width=6, fig.height=3}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-cap: "Figure 5. Alpha diversity (Shannon index) per patient over time."
+shannon_plot
+```
+
+# Beta diversity (Aitchison distance)
+<p style="text-align: justify;">
+Beta diversity was assessed using the Aitchison distance, computed as the Euclidean distance between centred log-ratio (CLR) transformed species abundances. The ordination of samples is presented in Figure 6, with the underlying coordinates provided in Table 7. The NMDS plot visualised the distribution of samples from the CD, UC, and donor groups, revealing substantial overlap between IBD patients and donors, together with pronounced inter-individual variability.
+<p>
+
+<p style="text-align: justify;">
+To ensure that group comparisons were not confounded by unequal multivariate dispersion, PERMDISP was performed for the three categorical variables. No significant differences in dispersion were detected for disease (F = 2.50, p = 0.12), donor_id_manual (F = 2.08, p = 0.067), or source_id (F = 0.78, p = 0.67), confirming homogeneous dispersions across groups and justifying the use of PERMANOVA and MRM.
+<p>
+
+<p style="text-align: justify;">
+PERMANOVA with strata = source_id was used to test within-subject factors while accounting for repeated measures. Both clinical index (R² = 0.046, p = 0.019) and time point (R² = 0.039, p = 0.0018) were significantly associated with microbial composition, indicating that the microbiota changes over time and in relation to clinical status within individual patients. The disease variable also appeared significant (R² = 0.033, p = 0.026), but this factor is constant within each patient, and its p-value in a stratified model should be interpreted with caution. Donor identity likewise appeared significant (R² = 0.28, p = 0.002), but for the same reason this result is not reliable in the stratified framework.
+<p>
+
+<p style="text-align: justify;">
+To obtain a valid estimate of the between-subject factors, MRM was applied with binary indicators same_disease, same_donor, and same_source. The overall model was significant (R² = 0.115, p = 0.0001, F = 52.99). The strongest effect was observed for same_source (coefficient = −1.53, p = 0.0001), indicating that samples from the same patient are markedly more similar to each other than samples from different patients. In contrast, same_disease showed only a borderline effect (coefficient = −0.095, p = 0.059), and same_donor was not significant (coefficient = −0.078, p = 0.64). These results indicate that, after accounting for individual identity, neither disease nor donor identity explains a substantial proportion of the variation in microbial composition.
+<p>
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+mpa.org.sbs <- filter_zeros(mpa.org, 0.8)
+
+mpa.org_subs_zeros <- mpa.org.sbs + 1
+
+mpa.org_clr <- mclr(mpa.org_subs_zeros)
+mpa.org_clr_dist <- dist(mpa.org_clr)
+
+coda.mds <- cmdscale(mpa.org_clr_dist)
+coda.mds.points <- as.data.frame(coda.mds)
+colnames(coda.mds.points) <- c("MDS1", "MDS2")
+
+nmds.p <- merge(metadata_ibd, cbind(rownames(coda.mds.points), coda.mds.points), by = 1)
+nmds.p$disease[nmds.p$disease == "HEALTHY"] <- "DONOR"
+
+nmds.p$disease <- factor(nmds.p$disease, levels = c("CD", "UC", "DONOR")) 
+nmds.p$time_point[nmds.p$disease == "DONOR"] <- 5
+
+NMDS <- data.frame(MDS1 = nmds.p[,7], MDS2 = nmds.p[,8], group=nmds.p$disease)
+
+df_ell <- data.frame()
+for(g in levels(NMDS$group)){
+    df_ell <- rbind(df_ell, cbind(as.data.frame(with(NMDS[NMDS$group==g,],
+                                                     veganCovEllipse(cov.wt(cbind(MDS1,MDS2),wt=rep(1/length(MDS1),length(MDS1)))$cov, center=c(mean(MDS1),mean(MDS2)))))
+                                  ,group=g))
+}
+colnames(df_ell)[3] <- "disease"
+
+df_ell$disease <- factor(df_ell$disease, levels = c("CD", "UC", "DONOR"))
+```
+
+```{r}
+#| echo: false
+datatable(nmds.p, 
+          caption = "Table 7. NMDS coordinates based on Aitchison distance.",
+          style = "bootstrap5", 
+          extensions = 'Buttons', 
+          options = list(dom = 'lBfrtip',
+                         buttons = c('csv', 'excel')))
+```
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+nmds_plot <- ggplot()+
+    geom_point(nmds.p, mapping = aes(MDS1, MDS2, col = disease, group = source_id, shape = disease), size = 3.0)+
+    stat_ellipse(nmds.p, mapping = aes(MDS1, MDS2, col = disease), linetype = 2, size = 1, level = 0.5, type = "t")+
+    theme(axis.text.x = element_text(angle = 90, size = 12, colour = "black", vjust = 0.5, hjust = 1), 
+          axis.title.y = element_text(size = 12), legend.title = element_text(size = 12), 
+          legend.text = element_text(size = 12, colour = "black"), 
+          axis.text.y = element_text(colour = "black", size = 12)) +
+    labs(x = "MDS1", y = "MDS2", col = "Disease", shape = "Disease")+
+    theme_bw()+
+    scale_colour_manual(values = c(brewer.pal(name = "Set1", n = 3)[1:2], "darkgreen"))+
+    scale_shape_manual(values = c(15,17,8))
+```
+
+```{r fig.width=5, fig.height=4.5}
+#| echo: false
+#| message: false
+#| warning: false
+download_this(
+      nmds_plot,
+      output_name = "nmds_plot",
+      output_extension = ".pdf",
+      button_label = "PDF",
+      button_type = "primary"
+)
+```
+
+```{r fig.width=5, fig.height=4.5}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-cap: "Figure 6. NMDS ordination based on Aitchison distance."
+nmds_plot
+```
+
+## Homogeneity of multivariate dispersions (PERMDISP)
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+meta_disease_only <- metadata_ibd[metadata_ibd$disease != "HEALTHY",]
+mpa.org_clr_disease_only <- mpa.org_clr[rownames(mpa.org_clr) %in% meta_disease_only$df_sample,]
+
+meta_disease_only <- meta_disease_only[match(rownames(mpa.org_clr_disease_only), meta_disease_only$df_sample),]
+```
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+run_permdisp <- function(dist_obj, group_var, group_name) {
+
+  bd <- betadisper(dist_obj, group = group_var)
+  
+  cat("\n==============================\n")
+  cat("PERMDISP:", group_name, "\n")
+  cat("==============================\n")
+  
+
+  cat("\n--- ANOVA ---\n")
+  print(anova(bd))
+  
+
+  cat("\n--- Permutation test ---\n")
+  print(permutest(bd, permutations = 9999))
+  
+  return(bd)
+}
+```
+
+### Disease
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+run_permdisp(dist(mpa.org_clr_disease_only), meta_disease_only$disease, "disease")
+```
+
+### Donor
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+run_permdisp(dist(mpa.org_clr_disease_only), meta_disease_only$donor_id_manual, "donor_id_manual")
+```
+
+### Patient (source_id)
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+run_permdisp(dist(mpa.org_clr_disease_only), meta_disease_only$source_id, "source_id")
+```
+
+## Within-subject effects (PERMANOVA with patient stratification)
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+fit_permanova <- adonis2(mpa.org_clr_disease_only ~ clinical_index + time_point + disease + donor_id_manual, meta_disease_only, 
+               method = "euclidean", permutations = 9999, by = "margin", strata = meta_disease_only$source_id)
+fit_permanova
+```
+
+## Between-subject effects (MRM)
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+same_disease <- outer(meta_disease_only$disease, meta_disease_only$disease, "==")
+same_donor   <- outer(meta_disease_only$donor_id_manual, meta_disease_only$donor_id_manual, "==")
+same_source  <- outer(meta_disease_only$source_id, meta_disease_only$source_id, "==")
+
+same_disease <- as.dist(same_disease)
+same_donor   <- as.dist(same_donor)
+same_source  <- as.dist(same_source)
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+mrm_model <- MRM(
+  dist(mpa.org_clr_disease_only) ~ same_disease + same_donor + same_source,
+  nperm = 9999
+)
+```
+
+```{r}
+#| echo: false
+print(mrm_model)
+```
+
+# Clinical index dynamics over time
+<p style="text-align: justify;">
+The clinical index was modelled as a function of time point, disease, and donor identity using a linear mixed model with a random intercept for patient (source_id), accounting for repeated measures. The model revealed a highly significant negative effect of time point (β = −1.45, p = 0.00043), indicating that the clinical index decreases over the course of follow-up across all patients. Neither disease (UC vs CD, β = −3.18, p = 0.50) nor any of the donor levels reached statistical significance, suggesting that the temporal decline in clinical index is consistent across disease groups and not attributable to the specific donor. The random effect of source_id was substantial (variance = 37.87, SD = 6.15) and highly significant (LRT = 21.51, p = 3.5e-06), confirming that individual patients differ markedly in their baseline clinical index, which justifies the mixed-model approach.
+<p>
+
+<p style="text-align: justify;">
+To quantify the explanatory power and effect size of the model, marginal and conditional R² were computed. Fixed effects (time point, disease, donor) explained 28.0% of the variance in clinical index (marginal R² = 0.280), whereas the full model including the random effect of patient explained 84.3% (conditional R² = 0.843), confirming that individual differences between patients account for the majority of the variation. Standardised coefficients showed that time_point was the only significant predictor (standardised β = −0.32, 95% CI [−0.48, −0.15]), corresponding to a medium-sized effect, whereas disease (standardised β = −0.52, 95% CI [−1.97, 0.93]) and all donor levels had confidence intervals crossing zero. The unique contribution of time_point was further quantified with Cohen's f² = 0.044, indicating a small but statistically significant effect.
+<p>
+
+<p style="text-align: justify;">
+Residual diagnostics indicated that the QQ plot of the model residuals approximately follows a normal distribution. Individual patient trajectories are visualised in Figure 7, displaying the log-transformed clinical index over time, faceted by disease group.
+<p>
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+meta_disease_only_new <- metadata_ibd[metadata_ibd$disease != "HEALTHY",]
+
+meta_disease_only_new$source_id <- as.factor(meta_disease_only_new$source_id)
+meta_disease_only_new$disease <- as.factor(meta_disease_only_new$disease)
+meta_disease_only_new$donor_id_manual <- as.factor(meta_disease_only_new$donor_id_manual)
+```
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+lmm.clin <- lmer(clinical_index ~ time_point + disease + donor_id_manual  + (1 | source_id),
+              data = meta_disease_only_new)
+```
+
+## Linear mixed model
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+summary(lmm.clin)
+```
+
+## Explained variance (R²)
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+r2(lmm.clin)
+```
+
+## Effect size
+### Standardised coefficients
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+standardize_parameters(lmm.clin, method = "refit")
+```
+
+### Cohen's f² for time point
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+r2_full <- 0.28
+lmm_no_time <- lmer(clinical_index ~ disease + donor_id_manual + (1 | source_id),
+                    data = meta_disease_only_new)
+r2_no_time <- r2(lmm_no_time)$R2_marginal
+f2_time <- (r2_full - r2_no_time) / (1 - r2_full)
+
+names(f2_time) <- "F2"
+
+print(f2_time)
+```
+
+## Random-effects test (RANOVA)
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+ranova(lmm.clin)
+```
+
+## Residual diagnostics (QQ plot)
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+qplot(residuals(lmm.clin))
+```
+
+## Individual trajectories
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+clinical_index_plot <- ggplot(meta_disease_only_new, aes(x = time_point, y = log(clinical_index),
+                                  group = source_id, color = disease)) +
+     geom_line(linewidth = 0.7, alpha = 0.8) +
+     # geom_point(size = 2) +
+     scale_x_continuous(breaks = sort(unique(meta_disease_only_new$time_point))) +
+     scale_color_manual(values = c("CD" = "#E41A1C", "UC" = "#377EB8")) +
+     labs(
+          x = "Time point",
+          y = "ln Clinical index",
+          color = "Disease"
+     ) +
+     facet_wrap(~ disease) +
+     theme_bw(base_size = 13)
+```
+
+```{r fig.width=6, fig.height=3}
+#| echo: false
+#| message: false
+#| warning: false
+download_this(
+      clinical_index_plot,
+      output_name = "clinical_index_plot",
+      output_extension = ".pdf",
+      button_label = "PDF",
+      button_type = "primary"
+)
+```
+
+```{r fig.width=6, fig.height=3}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-cap: "Figure 7. Clinical index dynamics per patient over time."
+clinical_index_plot
+```
+
+# Divergence from baseline (Aitchison distance)
+<p style="text-align: justify;">
+The Aitchison distance between each post-FMT sample and the corresponding baseline sample (time point 1) was computed to quantify divergence from the initial microbial state. Spearman rank correlations between this distance and time point were strongly positive and highly significant in both disease groups: rho = 0.89 (p = 2.4e-09) for CD and rho = 0.82 (p = 5.5e-05) for UC, indicating that the microbiota progressively diverges from baseline over time. Similarly, correlations between distance from baseline and clinical index were negative and significant in both groups (CD: rho = −0.48, p = 0.014; UC: rho = −0.50, p = 0.040), indicating that greater divergence from baseline was associated with lower clinical index, i.e., with clinical improvement. Notably, the magnitude of divergence from baseline exceeded the average within-donor Aitchison distance (shown as reference lines in Figure 8), indicating that the restructuring of the microbiota after FMT was greater than the natural variability observed among samples from the same donor.
+<p>
+
+<p style="text-align: justify;">
+A linear mixed model with a random intercept for patient (source_id) revealed a highly significant effect of time point (β = 1.92, p = 1.2e-11), confirming that the distance from baseline increases with each subsequent time point. Neither disease (UC vs CD, β = −0.55, p = 0.43) nor any donor level reached statistical significance. The random effect variance for source_id was estimated as zero, resulting in a singular fit (LRT = 0, p = 1), indicating that after accounting for time point, there is no residual between-patient variation in the distance from baseline. A generalised linear model without random effects produced virtually identical estimates, as expected given the zero random-effect variance.
+<p>
+
+<p style="text-align: justify;">
+Given the negligible random-effect variance, explanatory power and effect sizes were quantified using the reduced generalised linear model. The full model explained 70.1% of the variance in distance from baseline (R² = 0.701). Standardised coefficients showed that time_point was the dominant and only significant predictor (standardised β = 0.85, 95% CI [0.67, 1.03]), corresponding to a very large effect. In contrast, disease (standardised β = −0.18, 95% CI [−0.63, 0.27]) and all donor levels had confidence intervals crossing zero and did not reach significance. The unique contribution of time_point was further quantified with Cohen's f² = 2.20, indicating an exceptionally large effect — the temporal trend alone explained 66% of additional variance beyond disease and donor. Individual trajectories of the Aitchison distance from baseline are shown in Figure 8.
+<p>
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+aitch.dist <- mpa.org_clr_dist
+aitch.dist <- as.data.frame(as.matrix(aitch.dist))
+
+DONOR3_dist <- unlist(aitch.dist[which(!is.na(str_extract(colnames(aitch.dist), "DONOR3"))), which(!is.na(str_extract(colnames(aitch.dist), "DONOR3")))])
+
+DONOR3_dist <- unique(DONOR3_dist)[unique(DONOR3_dist) > 0]
+
+DONOR7_dist <- unlist(aitch.dist[which(!is.na(str_extract(colnames(aitch.dist), "DONOR7"))), which(!is.na(str_extract(colnames(aitch.dist), "DONOR7")))])
+
+DONOR7_dist <- unique(DONOR7_dist)[unique(DONOR7_dist) > 0]
+
+# from baseline
+source_id <- unique(metadata_ibd$source_id[metadata_ibd$disease != "HEALTHY"])
+source_id <- paste0(source_id, "_")
+
+from_baseline <- NULL
+for (k in source_id){
+    aitch.dist.sbs <- aitch.dist[which(!is.na(str_extract(colnames(aitch.dist), k)))]
+    aitch.dist.sbs <- aitch.dist.sbs[colnames(aitch.dist.sbs),]
+    aitch.dist.sbs <- aitch.dist.sbs[1]
+    aitch.dist.sbs <- cbind(sample_id = rownames(aitch.dist.sbs), aitch.dist.sbs)
+    colnames(aitch.dist.sbs)[2] <- "aitch_dist"
+    
+    from_baseline <- rbind(from_baseline, aitch.dist.sbs)
+}
+
+from_baseline <- merge(metadata_ibd, from_baseline, by = 1)
+from_baseline$disease <- factor(from_baseline$disease, levels = c("CD", "UC"))
+```
+
+## CD: correlation with time
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+cor.test(from_baseline$aitch_dist[div$disease == "CD"], from_baseline$time_point[div$disease == "CD"], method = "spearman")
+```
+
+## CD: correlation with clinical index
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+cor.test(from_baseline$aitch_dist[div$disease == "CD"], from_baseline$clinical_index[div$disease == "CD"], method = "spearman")
+```
+
+## UC: correlation with time
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+cor.test(from_baseline$aitch_dist[div$disease == "UC"], from_baseline$time_point[div$disease == "UC"], method = "spearman")
+```
+
+## UC: correlation with clinical index
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+cor.test(from_baseline$aitch_dist[div$disease == "UC"], from_baseline$clinical_index[div$disease == "UC"], method = "spearman")
+```
+
+## Linear mixed model
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+lmm.aitch_from_baseline <- lmer(aitch_dist ~ time_point + disease + donor_id_manual  + (1 | source_id),
+              data = from_baseline)
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+summary(lmm.aitch_from_baseline)
+```
+
+### Random-effects test (RANOVA)
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+ranova(lmm.aitch_from_baseline)
+```
+
+## GLM results
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+glm.aitch_from_baseline <- glm(aitch_dist ~ time_point + disease + donor_id_manual,
+              data = from_baseline)
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+summary(glm.aitch_from_baseline)
+```
+
+### Explained variance (R²)
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+r2(glm.aitch_from_baseline)
+```
+
+### Standardised coefficients
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+standardize_parameters(glm.aitch_from_baseline)
+```
+
+### Cohen's f²
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+r2_full_from_baseline <- r2(glm.aitch_from_baseline)
+
+lm_no_time_from_baseline <- glm(aitch_dist ~ disease + donor_id_manual, data = from_baseline)
+r2_no_time_from_baseline <- r2(lm_no_time_from_baseline)
+f2_time_from_baseline <- (r2_full_from_baseline$R2 - r2_no_time_from_baseline$R2) / (1 - r2_full_from_baseline$R2)
+
+names(f2_time_from_baseline) <- NULL
+
+print(f2_time_from_baseline)
+```
+
+## Individual trajectories
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+bray_baseline <- ggplot()+
+    geom_line(from_baseline, mapping = aes(time_point, aitch_dist, group = source_id, col = disease), size = 1, alpha = 0.33)+
+    geom_hline(yintercept = DONOR3_dist, col = "darkgreen", linetype = 2)+
+    geom_hline(yintercept = DONOR7_dist, col = "darkgreen", linetype = 2)+
+    stat_smooth(from_baseline, mapping = aes(time_point, aitch_dist, col = disease), se = F)+
+    facet_wrap(~disease, ncol = 2)+
+    ylab("Aitchison distance")+
+    xlab("time point")+
+    theme_bw()+
+    scale_color_brewer(palette="Set1")+
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+    theme(legend.position = "none")+
+    xlab("Time points")
+```
+
+```{r fig.width=5, fig.height=3}
+#| echo: false
+#| message: false
+#| warning: false
+download_this(
+      bray_baseline,
+      output_name = "bray_baseline",
+      output_extension = ".pdf",
+      button_label = "PDF",
+      button_type = "primary"
+)
+```
+
+```{r fig.width=5, fig.height=3}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-cap: "Figure 8. Divergence from baseline over time (Aitchison distance)."
+bray_baseline
+```
+
+# Divergence from donor sample (Aitchison distance)
+<p style="text-align: justify;">
+The Aitchison distance between each post-FMT sample and its assigned donor was computed as a direct measure of donor microbiota engraftment. Spearman correlations between this distance and time point differed between disease groups: in CD, the correlation was weak and non-significant (rho = −0.17, p = 0.40), whereas in UC, a strong and significant negative correlation was observed (rho = −0.68, p = 0.0025), indicating that UC patients progressively approached their donor's microbiota over time. Correlations between distance from donor and clinical index were also assessed: in CD, no significant correlation was observed (rho = 0.03, p = 0.89), whereas in UC, a significant positive correlation was found (rho = 0.54, p = 0.025), indicating that greater distance from the donor was associated with higher clinical index (i.e., worse clinical status).
+<p>
+
+<p style="text-align: justify;">
+A linear mixed model with a random intercept for patient (source_id) showed a significant negative effect of time point (β = −0.38, p = 0.001), confirming an overall decrease in distance from donor. Disease (UC vs CD) was not significant (β = 0.35, p = 0.42). Among donors, SPORT4_T1_B8 was associated with a significantly larger distance (β = 1.78, p = 0.036), and SPORT17_T1_B3 showed a borderline effect (β = 1.37, p = 0.057). The random effect variance for source_id was very small (0.03) and not significant (LRT = 0.018, p = 0.89), suggesting that after accounting for time and donor, between-patient variability in engraftment is minimal. A generalised linear model without random effects gave similar estimates, with additional donor effects becoming significant (SFM028_T1_B1, β = 1.43, p = 0.035; SPORT17_T1_B3, β = 1.36, p = 0.013; SPORT4_T1_B8, β = 1.78, p = 0.007).
+<p>
+
+<p style="text-align: justify;">
+Given the negligible random-effect variance, explanatory power and effect sizes were quantified using the reduced generalised linear model. The full model explained 52.7% of the variance in distance from donor (R² = 0.527). Standardised coefficients confirmed that time_point was a significant predictor (standardised β = −0.40, 95% CI [−0.63, −0.18]), corresponding to a medium-to-large effect, whereas disease (standardised β = 0.27, 95% CI [−0.30, 0.84]) did not reach significance. Three donors showed significant standardised effects: SFM028_T1_B1 (β = 1.13, 95% CI [0.11, 2.14]), SPORT17_T1_B3 (β = 1.08, 95% CI [0.26, 1.89]), and SPORT4_T1_B8 (β = 1.41, 95% CI [0.44, 2.37]), all associated with larger distances from donor. The overall Cohen's f² for the model was 0.308, indicating a large effect.
+<p>
+
+<p style="text-align: justify;">
+A model including a time_point × disease interaction revealed that the time trend was significant only for UC (trend = −0.45, 95% CI [−0.74, −0.16]), while for CD it was not (trend = −0.29, 95% CI [−0.64, 0.06]). However, the difference between the two slopes was not statistically significant (contrast = 0.16, p = 0.49). Post-hoc power analysis for this interaction yielded a very small effect size (Cohen's f² = 0.013), with only 10.8% power at the current sample size (50 observations from 14 patients). Sensitivity analysis indicated that the study had 80% power to detect only medium-to-large effects (minimum detectable f² = 0.20), whereas the observed interaction was ~15-fold smaller. Achieving 80% power for the observed effect would require approximately 629 observations (~180 patients). Thus, the non-significant interaction should not be interpreted as evidence against differential engraftment between CD and UC, but rather as a consequence of insufficient statistical power to detect an effect of this small magnitude. Individual trajectories are shown in Figure 9, and common trends with smooth curves are shown in Figure 10.
+<p>
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+donor_id <- metadata_ibd$df_sample[metadata_ibd$disease == "HEALTHY"]
+
+from_donor <- NULL
+for (k in donor_id){
+    recip_id <- metadata_ibd$df_sample[metadata_ibd$donor_id_manual == k]
+    recip_id <- recip_id[!is.na(recip_id)]
+    
+    aitch.dist.sbs <- aitch.dist[recip_id,][k]
+    aitch.dist.sbs <- cbind(sample_id = rownames(aitch.dist.sbs), aitch.dist.sbs)
+    colnames(aitch.dist.sbs)[2] <- "aitch_dist"
+    
+    from_donor <- rbind(from_donor, aitch.dist.sbs)
+}
+
+from_donor <- from_donor[!is.na(from_donor$aitch_dist),]
+
+from_donor <- merge(metadata_ibd, from_donor, by = 1)
+from_donor$disease <- factor(from_donor$disease, levels = c("CD", "UC", "Healthy"))
+
+
+cor.test(from_donor$aitch_dist[div$disease == "UC"], from_donor$time_point[div$disease == "UC"], method = "spearman")
+
+from_donor$source_id <- factor(from_donor$source_id, levels = c("CD1", "CD5", "CD16", "CD17", "CD27", "CD28", "CD35", "CD38", 
+                                                                      "UC3", "UC8", "UC15", "UC22", "UC33", "UC36"))
+```
+
+## CD: correlation with time
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+cor.test(from_donor$aitch_dist[div$disease == "CD"], from_donor$time_point[div$disease == "CD"], method = "spearman")
+```
+
+## CD: correlation with clinical index
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+cor.test(from_donor$aitch_dist[div$disease == "CD"], from_donor$clinical_index[div$disease == "CD"], method = "spearman")
+```
+
+## UC: correlation with time
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+cor.test(from_donor$aitch_dist[div$disease == "UC"], from_donor$time_point[div$disease == "UC"], method = "spearman")
+```
+
+## UC: correlation with clinical index
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+cor.test(from_donor$aitch_dist[div$disease == "UC"], from_donor$clinical_index[div$disease == "UC"], method = "spearman")
+```
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+plot_donor_1 <- ggplot()+
+    geom_line(from_donor, mapping = aes(time_point, aitch_dist, group = source_id, col = disease), size = 1)+
+    geom_hline(yintercept = DONOR3_dist, col = "darkgreen", linetype = 2)+
+    geom_hline(yintercept = DONOR7_dist, col = "darkgreen", linetype = 2)+
+    # stat_smooth(from_donor, mapping = aes(time_point, bray_dist, col = disease), se = F)+
+    facet_wrap(~source_id, ncol = 8)+
+    ylab("Aitchison distance")+
+    xlab("time point")+
+    theme_bw()+
+    scale_color_brewer(palette="Set1")+
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+    theme(legend.position = "none")+
+    xlab("Time points")
+```
+
+```{r fig.width=9, fig.height=4}
+#| echo: false
+#| message: false
+#| warning: false
+download_this(
+      plot_donor_1,
+      output_name = "plot_donor_1",
+      output_extension = ".pdf",
+      button_label = "PDF",
+      button_type = "primary"
+)
+```
+
+```{r fig.width=9, fig.height=4}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-cap: "Figure 9. Distance from donor per patient over time."
+plot_donor_1
+```
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+plot_donor_2 <- ggplot()+
+    geom_line(from_donor, mapping = aes(time_point, aitch_dist, group = source_id, col = disease), size = 1, alpha = 0.33)+
+    stat_smooth(from_donor, mapping = aes(time_point, aitch_dist, col = disease), se = F)+
+    geom_hline(yintercept = DONOR3_dist, col = "darkgreen", linetype = 2)+
+    geom_hline(yintercept = DONOR7_dist, col = "darkgreen", linetype = 2)+
+    facet_wrap(~disease, ncol = 2)+
+    ylab("")+
+    xlab("Time points")+
+    theme_bw()+
+    scale_color_brewer(palette="Set1")+
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+    theme(legend.position = "none")
+```
+
+```{r fig.width=5, fig.height=3}
+#| echo: false
+#| message: false
+#| warning: false
+download_this(
+      plot_donor_2,
+      output_name = "plot_donor_2",
+      output_extension = ".pdf",
+      button_label = "PDF",
+      button_type = "primary"
+)
+```
+
+```{r fig.width=5, fig.height=3}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-cap: "Figure 10. Distance from donor over time by disease group."
+plot_donor_2
+```
+
+## Linear mixed model
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+lmm.aitch_from_donor <- lmer(aitch_dist ~ time_point + disease + donor_id_manual  + (1 | source_id),
+              data = from_donor)
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+summary(lmm.aitch_from_donor)
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+ranova(lmm.aitch_from_donor)
+```
+
+## Linear model without random effects
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+glm.aitch_from_donor <- glm(aitch_dist ~ time_point + disease + donor_id_manual,
+              data = from_donor, family = "gaussian")
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+summary(glm.aitch_from_donor)
+```
+
+## Explained variance (R²)
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+r2(glm.aitch_from_donor)
+```
+
+## Standardised coefficients
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+standardize_parameters(glm.aitch_from_donor)
+```
+
+## Cohen's f²
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+r2_full_from_donor <- r2(glm.aitch_from_donor)
+
+lm_no_time_from_donor <- glm(aitch_dist ~ disease + donor_id_manual, data = from_donor)
+r2_no_time_from_donor <- r2(lm_no_time_from_donor)
+f2_time_from_donor <- (r2_full_from_donor$R2 - r2_no_time_from_donor$R2) / (1 - r2_full_from_donor$R2)
+
+names(f2_time_from_donor) <- NULL
+
+print(f2_time_from_donor)
+```
+
+## Interaction model (time × disease)
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+glm.aitch_from_donor_interactions <- glm(aitch_dist ~ time_point * disease + donor_id_manual,
+              data = from_donor, family = "gaussian")
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+summary(glm.aitch_from_donor_interactions)
+```
+
+### Estimated marginal trends
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+emtrends(glm.aitch_from_donor_interactions, pairwise ~ disease, var = "time_point")
+```
+
+### Cohen's f²
+#### Full model
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+r2_full <- r2(glm.aitch_from_donor_interactions)
+print(r2_full)
+```
+
+#### Model without interactions
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+glm_no_int <- glm(aitch_dist ~ time_point + disease + donor_id_manual,
+                  data = from_donor, family = "gaussian")
+r2_no_int <- r2(glm_no_int)
+print(r2_no_int)
+```
+
+#### Cohen's f² for model with interactions
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+f2_int <- (r2_full$R2 - r2_no_int$R2) / (1 - r2_full$R2)
+
+names(f2_int) <- NULL
+
+print(f2_int)
+```
+
+### Post-hoc power analysis
+#### Current power
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+n <- nobs(glm.aitch_from_donor_interactions)
+n_params <- length(coef(glm.aitch_from_donor_interactions))
+v <- df.residual(glm.aitch_from_donor_interactions)
+u <- 1
+
+power_current <- pwr.f2.test(u = u, v = v, f2 = f2_int, sig.level = 0.05)
+
+print(power_current)
+```
+
+#### Samples required for 80% power
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+power_80 <- pwr.f2.test(u = 1, f2 = f2_int, sig.level = 0.05, power = 0.80)
+v_needed <- ceiling(power_80$v)
+n_needed <- v_needed + n_params
+
+print(n_needed)
+```
+
+### Minimum detectable effect size (MDES)
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+mdes <- pwr.f2.test(u = 1, v = df.residual(glm.aitch_from_donor_interactions), sig.level = 0.05, power = 0.80)
+
+print(mdes$f2)
+```
+
+# DEICODE analysis with external reference cohort (Franzosa 2019)
+<p style="text-align: justify;">
+To place our FMT cohort in the context of an independent IBD reference dataset, we performed a DEICODE robust Aitchison PCA on a merged dataset combining our 50 samples with 218 external samples from the Franzosa_2019 study (CD = 86, UC = 76, Control = 56). The resulting biplot (Figure 11) shows the distribution of all samples, coloured by disease group (CD, UC, DONOR/Control) and shaped by FMT status. The first axis (Axis 1, explaining 51.9% of variance) separated disease samples from controls, while the second axis (Axis 2, 27.3%) captured additional variation within disease groups.
+<p>
+
+<p style="text-align: justify;">
+For our FMT cohort, we examined the relationship between Axis 1 and time point separately for each disease group. In CD patients, no significant correlation was observed (Spearman rho = 0.23, p = 0.27), whereas in UC patients, a significant negative correlation was found (rho = −0.57, p = 0.004), indicating that UC patients progressively moved along Axis 1 over time, in the direction of the control group. Correlations between Axis 1 and clinical index followed the same pattern: no significant association in CD (rho = −0.33, p = 0.11), but a significant positive correlation in UC (rho = 0.44, p = 0.030), indicating that as clinical status improved, UC patients moved further along Axis 1 towards the control region. A linear mixed model with random intercept for patient confirmed a borderline significant effect of time point on Axis 1 (β = −0.0096, p = 0.054), while disease and donor were not significant. The random effect of source_id was negligible (LRT = 0.37, p = 0.54), suggesting that after accounting for time, between-patient variability in Axis 1 was minimal. A generalised linear model without random effects gave similar estimates, with donor SFM028_T1_B1 reaching significance (β = 0.066, p = 0.036). Individual trajectories of Axis 1 are shown in Figure 12, and the taxa driving Axis 1 are displayed in the loading plot (Figure 13).
+<p>
+
+<p style="text-align: justify;">
+Given the negligible random-effect variance, explanatory power and effect sizes were quantified using the reduced generalised linear model with interaction. To formally compare the temporal trends between CD and UC, estimated marginal trends of time_point were computed for each group using a model with a time_point × disease interaction. The trend was significant only in UC (trend = −0.0203, 95% CI −0.0327 to −0.0080), whereas in CD it was not distinguishable from zero (trend = 0.0053, 95% CI −0.0087 to 0.0193). The direct contrast between the two slopes was statistically significant (estimate = 0.0256, p = 0.0085), indicating that the direction and rate of change along Axis 1 differ between CD and UC: UC patients shift towards the control region over time, while CD patients do not.
+<p>
+
+<p style="text-align: justify;">
+The full model explained 36.2% of the variance in Axis 1 (R² = 0.362), while the model without the interaction explained only 22.9% (R² = 0.229), indicating that the interaction term accounts for a substantial additional portion of variance (13.3%). Standardised coefficients confirmed that the interaction time_point × diseaseUC was the strongest and only significant predictor in the model (standardised β = −0.77, 95% CI [−1.31, −0.23]), corresponding to a large effect. The unique contribution of the interaction was quantified with Cohen's f² = 0.209, indicating a medium-to-large effect. Notably, post-hoc power analysis showed that the current sample (48 observations from 14 patients) provided 79.3% power to detect this interaction, and only 49 observations would be required for 80% power — essentially matching the sample size already available. Unlike the underpowered analyses of Aitchison distance from donor and colonisation, the DEICODE interaction was both statistically significant and adequately powered.
+<p>
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+meta_data <- read.csv("data/metadata_combine.txt", header = T, stringsAsFactors = F, sep = "\t")
+meta_data <- meta_data[!meta_data$sampleid %in% c("DONOR2_T2_B2", "DONOR3_T1_B1", "UC7_T1_B2", "UC7_T2_B2", "UC7_T3_B2", "CD35_T3_B7"),]
+
+qurro_load_plot <- read.csv('output/deicode/deicode_load_plot.csv', sep = "\t", stringsAsFactors = F)
+ordination_samples <- read.csv('output/deicode/deicode_ordination_samples.csv', sep = "\t", stringsAsFactors = F)
+ordination_taxa <- read.csv('output/deicode/deicode_ordination_taxa.csv', sep = "\t", stringsAsFactors = F)
+```
+
+## Biplot with external reference cohort
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+ordination_samples <- merge(ordination_samples, meta_data, by = 1)
+ordination_samples$disease <- factor(ordination_samples$disease, levels = c("CD", "UC", "Control"), labels = c("CD", "UC", "DONOR/Control"))
+
+NMDS <- data.frame(MDS1 = ordination_samples[,2], MDS2 = ordination_samples[,3], group=ordination_samples$disease)
+
+df_ell <- data.frame()
+for(g in levels(NMDS$group)){
+    df_ell <- rbind(df_ell, cbind(as.data.frame(with(NMDS[NMDS$group==g,],
+                                                     veganCovEllipse(cov.wt(cbind(MDS1,MDS2),wt=rep(1/length(MDS1),length(MDS1)))$cov,center=c(mean(MDS1),mean(MDS2)))))
+                                  ,group=g))
+}
+
+colnames(df_ell)[3] <- "disease"
+
+df_ell$disease <- factor(df_ell$disease, levels = c("CD", "UC", "DONOR/Control"))
+```
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+deicode_rcpa_plot <- ggplot()+
+    # geom_path(df_ell, mapping = aes(x=MDS1, y=MDS2, col = disease), linetype = 2, size = 1)+
+    geom_point(ordination_samples, mapping = aes(Axis_1, Axis_2, col = disease, shape = FMT), size = 3.5, stroke = 0.5)+
+    stat_ellipse(ordination_samples, mapping = aes(Axis_1, Axis_2, col = disease), size = 1, linetype = 2, level = 0.95)+
+    theme(axis.text.x = element_text(angle = 90, size = 12, colour = "black", vjust = 0.5, hjust = 1), 
+          axis.title.y = element_text(size = 12), legend.title = element_text(size = 12), 
+          legend.text = element_text(size = 12, colour = "black"), 
+          axis.text.y = element_text(colour = "black", size = 12))+
+    theme_bw()+
+    labs(x = "Axis 1 (51.9%)", y = "Axis 2 (27.3%)", col = "Disease", shape = "FMT")+
+    scale_shape_manual(values = c(1, 16))+
+    scale_color_manual(values = c(brewer.pal(name = "Set1", n = 3)[1:2], "darkgreen"))
+```
+
+```{r fig.width=6.25, fig.height=5}
+#| echo: false
+#| message: false
+#| warning: false
+download_this(
+      deicode_rcpa_plot,
+      output_name = "deicode_rcpa_plot",
+      output_extension = ".pdf",
+      button_label = "PDF",
+      button_type = "primary"
+)
+```
+
+```{r fig.width=6.25, fig.height=5}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-cap: "Figure 11. DEICODE biplot with external reference cohort."
+deicode_rcpa_plot
+```
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+ordination_samples_sbs <- ordination_samples[ordination_samples$FMT == "yes",]
+ordination_samples_sbs <- merge(meta_data, ordination_samples_sbs[c(1:4)], by = 1)
+
+ordination_samples_sbs <- merge(metadata_ibd, ordination_samples_sbs[-c(2:4)], by = 1)
+ordination_samples_sbs <- ordination_samples_sbs[ordination_samples_sbs$disease != "HEALTHY",]
+```
+
+### Axis 1 correlation with time
+#### CD
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+cor.test(ordination_samples_sbs$Axis_1[ordination_samples_sbs$disease == "CD"], 
+         ordination_samples_sbs$time_point[ordination_samples_sbs$disease == "CD"], 
+         method = "spearman")
+```
+
+#### UC
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+cor.test(ordination_samples_sbs$Axis_1[ordination_samples_sbs$disease == "UC"], 
+         ordination_samples_sbs$time_point[ordination_samples_sbs$disease == "UC"], 
+         method = "spearman")
+```
+
+### Axis 1 correlation with clinical index
+#### CD
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+cor.test(ordination_samples_sbs$Axis_1[ordination_samples_sbs$disease == "CD"], 
+         ordination_samples_sbs$clinical_index[ordination_samples_sbs$disease == "CD"], 
+         method = "spearman")
+```
+
+#### UC
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+cor.test(ordination_samples_sbs$Axis_1[ordination_samples_sbs$disease == "UC"], 
+         ordination_samples_sbs$clinical_index[ordination_samples_sbs$disease == "UC"], 
+         method = "spearman")
+```
+
+## Axis 1 trajectories
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+ordination_samples_sbs$source_id <- factor(ordination_samples_sbs$source_id, levels = c("CD1", "CD5", "CD16", "CD17", "CD27", "CD28", "CD35", "CD38", "UC3", "UC8", "UC15", "UC22", "UC33", "UC36"))
+```
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+axis_1_plot_1 <- ggplot(ordination_samples_sbs)+
+    geom_line(mapping = aes(time_point, Axis_1, group = source_id, col = disease), size = 1.2)+
+    geom_hline(yintercept = 0, col = "black", linetype = 2)+
+    facet_wrap(~source_id, ncol = 8)+
+    ylab("Axis 1")+
+    xlab("Time points")+
+    theme_bw()+
+    scale_color_brewer(palette="Set1")+
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+    theme(legend.position = "none")
+```
+
+```{r fig.width=9, fig.height=4}
+#| echo: false
+#| message: false
+#| warning: false
+download_this(
+      axis_1_plot_1,
+      output_name = "axis_1_plot_1",
+      output_extension = ".pdf",
+      button_label = "PDF",
+      button_type = "primary"
+)
+```
+
+```{r fig.width=9, fig.height=4}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-cap: "Figure 12. DEICODE Axis 1 trajectories per patient."
+axis_1_plot_1
+```
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+axis_1_plot <- qurro_load_plot[order(qurro_load_plot$Axis_1),]
+axis_1_plot <- rbind(head(axis_1_plot, 10), tail(axis_1_plot, 10))
+axis_1_plot$group[axis_1_plot$Axis_1 > 0] <- "disease"
+axis_1_plot$group[axis_1_plot$Axis_1 < 0] <- "healthy"
+```
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+loading_plot_axis_1 <- ggplot(axis_1_plot, aes(Axis_1, reorder(Taxa, Axis_1), fill = group))+
+    geom_bar(stat="identity", width = 0.75, col = "black")+
+    theme_classic()+
+    xlim(c(-0.25, 0.25))+
+    scale_fill_manual(values = c("black", "white"))+
+    xlab("Feature loading: Axis 1")+
+    ylab("Species")+
+    theme(legend.position = "none")+
+    scale_y_discrete(position = "right")
+```
+
+```{r fig.width=4, fig.height=4}
+#| echo: false
+#| message: false
+#| warning: false
+download_this(
+      loading_plot_axis_1,
+      output_name = "loading_plot_axis_1",
+      output_extension = ".pdf",
+      button_label = "PDF",
+      button_type = "primary"
+)
+```
+
+```{r fig.width=4, fig.height=4}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-cap: "Figure 13. Top taxa driving DEICODE Axis 1."
+loading_plot_axis_1
+```
+
+## Linear mixed model for Axis 1 data
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+lmm.axis_1 <- lmer(Axis_1 ~ time_point + disease + donor_id_manual  + (1 | source_id),
+              data = ordination_samples_sbs)
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+summary(lmm.axis_1)
+```
+
+### Random-effects test (RANOVA)
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+ranova(lmm.axis_1)
+```
+
+## Linear model without random effects
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+glm.axis_1 <- glm(Axis_1 ~ time_point + disease + donor_id_manual, data = ordination_samples_sbs, family = "gaussian")
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+summary(glm.axis_1)
+```
+
+## Interaction model (time × disease)
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+glm.axis_1_combine <- glm(Axis_1 ~ time_point*disease + donor_id_manual, data = ordination_samples_sbs, family = "gaussian")
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+summary(glm.axis_1_combine)
+```
+
+### Estimated marginal trends
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+emtrends(glm.axis_1_combine, pairwise ~ disease, var = "time_point")
+```
+
+### Explained variance (R²)
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+r2_axis1_full <- as.numeric(r2(glm.axis_1_combine))
+r2_axis1_reduced <- as.numeric(r2(glm.axis_1))
+
+print(c(r2_axis1_full = r2_axis1_full, r2_axis1_reduced = r2_axis1_reduced))
+```
+
+### Standardised coefficients
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+standardize_parameters(glm.axis_1_combine, method = "refit")
+```
+
+### Cohen's f²
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+f2_axis1_int <- (r2_axis1_full - r2_axis1_reduced) / (1 - r2_axis1_full)
+print(f2_axis1_int)
+```
+
+### Post-hoc power analysis
+#### Current power
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+n_axis1 <- nobs(glm.axis_1_combine)
+n_params_axis1 <- length(coef(glm.axis_1_combine))
+v_axis1 <- df.residual(glm.axis_1_combine)
+u_axis1 <- 1
+
+power_axis1_current <- pwr.f2.test(u = u_axis1, v = v_axis1, 
+                                   f2 = f2_axis1_int, sig.level = 0.05)
+print(power_axis1_current)
+```
+
+#### Samples for 80% power
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+power_axis1_80 <- pwr.f2.test(u = u_axis1, f2 = f2_axis1_int, 
+                              sig.level = 0.05, power = 0.80)
+n_axis1_needed_obs <- ceiling(power_axis1_80$v) + n_params_axis1
+print(n_axis1_needed_obs)
+```
+
+# Taxonomic signatures of temporal change (Songbird)
+<p style="text-align: justify;">
+Differential ranking of taxa by their association with time was performed using Songbird, a multinomial regression framework that identifies log-ratio–based microbial signatures. The Songbird model was fitted with time point as the primary covariate within each disease group separately, so the resulting log ratios reflect taxa whose abundances change systematically over the follow-up period. Importantly, Songbird generates two distinct sets of differentially ranked taxa for CD and UC — the log ratios in the two groups are computed from different microbial signatures and are therefore not directly comparable on a common scale. For this reason, fitting a combined time_point × disease interaction model across both groups would be inappropriate and would not yield a biologically meaningful contrast. This contrasts with the DEICODE analysis, where a single shared ordination space (anchored to an external reference dataset) allowed a valid formal comparison of slopes between CD and UC.
+<p>
+
+<p style="text-align: justify;">
+In the CD group, the top differentially ranked taxa (Figure 14) showed only modest and inconsistent effect sizes, with no clear directional shift. Consistently, the sample-level log ratio per patient (Figure 15) showed no significant correlation with clinical index (Spearman rho = −0.05, p = 0.83). A linear mixed model with random intercept for patient confirmed that time point was not significantly associated with the log ratio (β = 0.10, p = 0.83), and no donor level reached significance. The random effect of source_id was borderline (LRT = 2.90, p = 0.089), suggesting some between-patient variability but not enough to reach significance. A generalised linear model without random effects gave the same result (β = −0.017, p = 0.98). To quantify the unique contribution of time, R² was computed as the difference between models with and without time_point: adding time to a model that already included donor explained essentially no additional variance (ΔR² = 4.1 × 10⁻⁵), corresponding to Cohen's f² = 5.0 × 10⁻⁵ and power of only 5.0% — i.e., at the level of the significance threshold, meaning the effect is undetectable and effectively zero. At the before/after level (Figure 16), no significant difference was observed between pre- and post-FMT samples (Wilcoxon W = 40, p = 0.15; LMM status β = 1.52, p = 0.19), and the unique contribution of FMT status was also small (ΔR² = 0.059, f² = 0.076, power = 20.6%). Since the Songbird ranking was driven by time, the absence of any temporal effect on the log ratio indicates that the CD-associated microbial signature remains essentially stable over the follow-up period, and that FMT does not induce a coherent compositional shift in this group.
+<p>
+
+<p style="text-align: justify;">
+In the UC group, by contrast, the top differentially ranked taxa (Figure 17) showed a pronounced and coherent structure, and the sample-level log ratio (Figure 18) showed a significant negative correlation with clinical index (Spearman rho = −0.48, p = 0.018), indicating that as clinical condition improved, the microbial log ratio shifted accordingly. A linear mixed model revealed a highly significant positive effect of time point (β = 1.40, p = 0.0001), demonstrating a progressive change in the UC-associated microbial signature over the follow-up period. Donor levels were not significant in the mixed model, though in the generalised linear model DONOR3_T2_B2 (β = −2.88, p = 0.068) and DONOR3_T3_B6 (β = −3.02, p = 0.033) showed effects. The random effect variance for source_id was zero (LRT = 0, p = 1), indicating that after accounting for time, between-patient variability was negligible. To quantify the unique contribution of time, adding time_point to a model that already included donor explained an additional 47.0% of variance (ΔR² = 0.470), corresponding to an exceptionally large effect (Cohen's f² = 1.449) and 99.9% power at the current sample size. At the before/after level (Figure 19), a significant difference was observed between pre- and post-FMT samples (Wilcoxon W = 11, p = 0.0025; LMM status β = 3.42, p = 0.004), with a large unique contribution of FMT status (ΔR² = 0.311, f² = 0.645, power = 90.9%), confirming that the UC-associated microbial signature shifted significantly after FMT.
+<p>
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+sample_plot_cd <- read.csv("output/songbird/sample_plot_CD.tsv", sep = "\t")[c(1,2)]
+sample_plot_cd <- merge(metadata_ibd, sample_plot_cd, by = 1)
+
+sample_plot_uc <- read.csv("output/songbird/sample_plot_UC.tsv", sep = "\t")[c(1,2)]
+sample_plot_uc <- merge(metadata_ibd, sample_plot_uc, by = 1)
+```
+
+## Crohn's disease
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+differentials_mpa_cd <- read.csv("output/songbird/differentials_CD.tsv", sep = "\t")[c(1,8)]
+colnames(differentials_mpa_cd)[2] <- "effect_size"
+differentials_mpa_cd <- differentials_mpa_cd[order(differentials_mpa_cd$effect_size, decreasing = T),]
+
+differentials_mpa_cd_sbs <- rbind(head(differentials_mpa_cd[differentials_mpa_cd$effect_size > 0,], n = 10), 
+                                  tail(differentials_mpa_cd[differentials_mpa_cd$effect_size < 0,], n = 10))
+differentials_mpa_cd_sbs$status[differentials_mpa_cd_sbs$effect_size > 0] <- "INCREASED"
+differentials_mpa_cd_sbs$status[differentials_mpa_cd_sbs$effect_size < 0] <- "DECREASED"
+
+differentials_mpa_cd_sbs$featureid <- gsub("_", " ", differentials_mpa_cd_sbs$featureid)
+
+mpa_fold_change_plot_cd <- ggplot(differentials_mpa_cd_sbs, aes(effect_size, reorder(featureid, -effect_size), fill = status))+
+    geom_bar(stat="identity", width = 0.75, col = brewer.pal(n = 3,name = "Set1")[1])+
+    theme_classic()+
+    scale_fill_manual(values = c(brewer.pal(n = 3,name = "Set1")[1], "white"))+
+    xlab("Differentials: Time point")+
+    ylab("Species")+
+    theme(legend.position = "none")+
+    scale_y_discrete(position = "right")+
+    xlim(c(-1.2,1.2))+
+    theme(axis.text.x = element_text(size = 10, colour = "black", vjust = 0.5, hjust = 1), 
+          axis.title.y = element_text(size = 10), legend.title = element_text(size = 10), 
+          legend.text = element_text(size = 10, colour = "black"), 
+          axis.text.y = element_text(colour = "black", size = 10))
+```
+
+```{r fig.width=5.75, fig.height=4.5}
+#| echo: false
+#| message: false
+#| warning: false
+download_this(
+      mpa_fold_change_plot_cd,
+      output_name = "mpa_fold_change_plot_cd",
+      output_extension = ".pdf",
+      button_label = "PDF",
+      button_type = "primary"
+)
+```
+
+```{r fig.width=5.75, fig.height=4.5}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-cap: "Figure 14. Top differential taxa in CD over time (Songbird)."
+mpa_fold_change_plot_cd
+```
+
+### Sample-level trajectories
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+sample_plot_cd$source_id <- factor(sample_plot_cd$source_id, 
+       levels = c("CD1", "CD5", "CD16", "CD17", "CD27", "CD28", "CD35", "CD38"))
+
+sample_plot_cd_ind <- ggplot()+
+    geom_line(sample_plot_cd, mapping = aes(time_point, Current_Natural_Log_Ratio, group = source_id, col = disease), size = 1.2)+
+    geom_hline(yintercept = 0, linetype = 2)+
+    theme_bw()+
+    xlab("Time points")+
+    ylab("Log ratio")+
+    scale_color_brewer(palette="Set1")+
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+    theme(legend.position = "none")+
+    facet_wrap(~source_id, nrow = 1)
+```
+
+```{r fig.width=9, fig.height=2}
+#| echo: false
+#| message: false
+#| warning: false
+download_this(
+      sample_plot_cd_ind,
+      output_name = "sample_plot_cd_ind",
+      output_extension = ".pdf",
+      button_label = "PDF",
+      button_type = "primary"
+)
+```
+
+```{r fig.width=9, fig.height=2}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-cap: "Figure 15. Songbird log ratio per CD patient over time (taxa level)."
+sample_plot_cd_ind
+```
+
+#### Correlations with time and clinical index
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+cor.test(sample_plot_cd$Current_Natural_Log_Ratio, sample_plot_cd$clinical_index, method = "spearman")
+```
+
+#### Linear mixed model
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+lmm.songbird_CD <- lmer(Current_Natural_Log_Ratio ~ time_point + donor_id_manual  + (1 | source_id),
+              data = sample_plot_cd)
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+summary(lmm.songbird_CD)
+```
+
+##### Random-effects test (RANOVA)
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+ranova(lmm.songbird_CD)
+```
+
+#### Linear model without random effects
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+glm.songbird_CD <- glm(Current_Natural_Log_Ratio ~ time_point + donor_id_manual,
+              data = sample_plot_cd)
+
+glm.songbird_CD_without_time <- glm(Current_Natural_Log_Ratio ~ donor_id_manual,
+              data = sample_plot_cd)
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+summary(glm.songbird_CD)
+```
+
+##### Unique variance explained by time (ΔR²)
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+r2_songbird_cd_with_time <- r2(glm.songbird_CD)
+r2_songbird_cd_without_time <- r2(glm.songbird_CD_without_time)
+
+r2_songbird_cd_with_time$R2 - r2_songbird_cd_without_time$R2
+```
+
+##### Cohen's f² for time
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+f2_songbird_CD <- (r2_songbird_cd_with_time$R2 - r2_songbird_cd_without_time$R2) / (1 - r2_songbird_cd_with_time$R2)
+
+names(f2_songbird_CD) <- NULL
+
+print(f2_songbird_CD)
+```
+
+#### Post-hoc power analysis
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+n_songbird_cd <- nobs(glm.songbird_CD)
+n_params_songbird_cd <- length(coef(glm.songbird_CD)) + 1  # +1 для случайного эффекта
+v_songbird_cd <- df.residual(glm.songbird_CD)
+u_songbird_cd <- 1
+
+power_songbird_current_cd <- pwr.f2.test(u = u_songbird_cd, v = v_songbird_cd,
+                                      f2 = f2_songbird_CD, sig.level = 0.05)
+print(power_songbird_current_cd)
+```
+
+### Before vs after FMT
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+sample_plot_cd$status[sample_plot_cd$time_point == 1] <- "before"
+sample_plot_cd$status[sample_plot_cd$time_point != 1] <- "after"
+
+sample_plot_cd$status <- factor(sample_plot_cd$status, levels = c("before", "after"))
+
+sample_plot_cd_comb <- ggplot(sample_plot_cd, aes(status, Current_Natural_Log_Ratio))+
+      geom_boxplot()+
+      theme_classic()+
+      xlab("Status")+
+      ylab("Log ratio")+
+      scale_color_manual(values = brewer.pal(name = "Set1", n = 3)[1])+
+      theme(legend.position = "none")
+```
+
+```{r fig.width=4, fig.height=3}
+#| echo: false
+#| message: false
+#| warning: false
+download_this(
+      sample_plot_cd_comb,
+      output_name = "sample_plot_cd_comb",
+      output_extension = ".pdf",
+      button_label = "PDF",
+      button_type = "primary"
+)
+```
+
+```{r fig.width=4, fig.height=3}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-cap: "Figure 16. Songbird log ratio before and after FMT in CD (taxa level)."
+sample_plot_cd_comb
+```
+
+#### Wilcoxon rank-sum test
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+wilcox.test(sample_plot_cd$Current_Natural_Log_Ratio[sample_plot_cd$status == "before"],
+            sample_plot_cd$Current_Natural_Log_Ratio[sample_plot_cd$status == "after"])
+```
+
+#### Linear mixed model
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+lmm.songbird_CD_status <- lmer(Current_Natural_Log_Ratio ~ status + donor_id_manual  + (1 | source_id),
+              data = sample_plot_cd)
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+summary(lmm.songbird_CD_status)
+```
+
+##### Random-effects test (RANOVA)
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+ranova(lmm.songbird_CD_status)
+```
+
+#### Linear model without random effects
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+glm.songbird_CD_status <- glm(Current_Natural_Log_Ratio ~ status + donor_id_manual,
+              data = sample_plot_cd)
+
+glm.songbird_CD_status_without <- glm(Current_Natural_Log_Ratio ~ donor_id_manual,
+              data = sample_plot_cd)
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+summary(glm.songbird_CD_status)
+```
+
+##### Unique variance explained by time (ΔR²)
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+r2_songbird_CD_status <- r2(glm.songbird_CD_status)
+r2_songbird_CD_status_without <- r2(glm.songbird_CD_status_without)
+
+r2_songbird_CD_status$R2 - r2_songbird_CD_status_without$R2
+```
+
+##### Cohen's f² for time
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+f2_songbird_CD_status <- (r2_songbird_CD_status$R2 - r2_songbird_CD_status_without$R2) / (1 - r2_songbird_CD_status$R2)
+
+names(f2_songbird_CD_status) <- NULL
+
+print(f2_songbird_CD_status)
+```
+
+##### Post-hoc power analysis
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+n_songbird_cd_status <- nobs(glm.songbird_CD_status)
+n_params_songbird_cd_status <- length(coef(glm.songbird_CD_status)) + 1  # +1 для случайного эффекта
+v_songbird_cd_status <- df.residual(glm.songbird_CD_status)
+u_songbird_cd_status <- 1
+
+power_songbird_current_cd_status <- pwr.f2.test(u = u_songbird_cd_status, v = v_songbird_cd_status,
+                                      f2 = f2_songbird_CD_status, sig.level = 0.05)
+print(power_songbird_current_cd_status)
+```
+
+## Ulcerative colitis
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+differentials_mpa_uc <- read.csv("output/songbird/differentials_UC.tsv", sep = "\t")[c(1,6)]
+colnames(differentials_mpa_uc)[2] <- "effect_size"
+differentials_mpa_uc <- differentials_mpa_uc[order(differentials_mpa_uc$effect_size, decreasing = T),]
+differentials_mpa_uc.sbs <- rbind(head(differentials_mpa_uc, n = 10), tail(differentials_mpa_uc, n = 10))
+differentials_mpa_uc.sbs$status[differentials_mpa_uc.sbs$effect_size > 0] <- "INCREASED"
+differentials_mpa_uc.sbs$status[differentials_mpa_uc.sbs$effect_size < 0] <- "DECREASED"
+
+differentials_mpa_uc.sbs$featureid <- gsub("_", " ", differentials_mpa_uc.sbs$featureid)
+
+mpa_fold_change_plot_uc <- ggplot(differentials_mpa_uc.sbs, aes(effect_size, reorder(featureid, -effect_size), fill = status))+
+    geom_bar(stat="identity", width = 0.75, col = brewer.pal(n = 3,name = "Set1")[2])+
+    theme_classic()+
+    scale_fill_manual(values = c(brewer.pal(n = 3,name = "Set1")[2], "white"))+
+    xlab("Differentials: Time points")+
+    ylab("Species")+
+    theme(legend.position = "none")+
+    scale_y_discrete(position = "right")+
+    xlim(c(-1.2,1.2))+
+    theme(axis.text.x = element_text(size = 10, colour = "black", vjust = 0.5, hjust = 1), 
+          axis.title.y = element_text(size = 10), legend.title = element_text(size = 10), 
+          legend.text = element_text(size = 10, colour = "black"), 
+          axis.text.y = element_text(colour = "black", size = 10))
+```
+
+```{r fig.width=5.75, fig.height=4.5}
+#| echo: false
+#| message: false
+#| warning: false
+download_this(
+      mpa_fold_change_plot_uc,
+      output_name = "mpa_fold_change_plot_uc",
+      output_extension = ".pdf",
+      button_label = "PDF",
+      button_type = "primary"
+)
+```
+
+```{r fig.width=5.75, fig.height=4.5}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-cap: "Figure 17. Top differential taxa in UC over time (Songbird)."
+mpa_fold_change_plot_uc
+```
+
+### Sample-level trajectories
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+sample_plot_uc$source_id <- factor(sample_plot_uc$source_id, levels = c("UC3", "UC8", "UC15", "UC22", "UC33", "UC36"))
+
+sample_plot_uc_ind <- ggplot()+
+    geom_line(sample_plot_uc, mapping = aes(time_point, Current_Natural_Log_Ratio, group = source_id, col = disease), size = 1.2)+
+    geom_hline(yintercept = 0, linetype = 2)+
+    theme_bw()+
+    xlab("Time points")+
+    ylab("Log ratio")+
+    scale_color_manual(values = brewer.pal(name = "Set1", n = 3)[2])+
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+    theme(legend.position = "none")+
+    facet_wrap(~source_id, nrow = 1)
+```
+
+```{r fig.width=7, fig.height=2}
+#| echo: false
+#| message: false
+#| warning: false
+download_this(
+      sample_plot_uc_ind,
+      output_name = "sample_plot_uc_ind",
+      output_extension = ".pdf",
+      button_label = "PDF",
+      button_type = "primary"
+)
+```
+
+```{r fig.width=7, fig.height=2}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-cap: "Figure 18. Songbird log ratio per UC patient over time (taxa level)."
+sample_plot_uc_ind
+```
+
+#### Correlations with time and clinical index
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+cor.test(sample_plot_uc$Current_Natural_Log_Ratio, sample_plot_uc$clinical_index, method = "spearman")
+```
+
+#### Linear mixed model
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+lmm.songbird_UC <- lmer(Current_Natural_Log_Ratio ~ time_point + donor_id_manual  + (1 | source_id),
+              data = sample_plot_uc)
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+summary(lmm.songbird_UC)
+```
+
+##### Random-effects test (RANOVA)
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+ranova(lmm.songbird_UC)
+```
+
+#### Linear model without random effects
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+glm.songbird_UC <- glm(Current_Natural_Log_Ratio ~ time_point + donor_id_manual,
+              data = sample_plot_uc)
+
+glm.songbird_UC_without_time <- glm(Current_Natural_Log_Ratio ~ donor_id_manual,
+              data = sample_plot_uc)
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+summary(glm.songbird_UC)
+```
+
+##### Unique variance explained by time (ΔR²)
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+r2_songbird_uc_with_time <- r2(glm.songbird_UC)
+r2_songbird_uc_without_time <- r2(glm.songbird_UC_without_time)
+
+r2_songbird_uc_with_time$R2 - r2_songbird_uc_without_time$R2
+```
+
+##### Cohen's f² for time
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+f2_songbird_UC <- (r2_songbird_uc_with_time$R2 - r2_songbird_uc_without_time$R2) / (1 - r2_songbird_uc_with_time$R2)
+
+names(f2_songbird_UC) <- NULL
+
+print(f2_songbird_UC)
+```
+
+#### Post-hoc power analysis
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+n_songbird_uc <- nobs(glm.songbird_UC)
+n_params_songbird_uc <- length(coef(glm.songbird_UC)) + 1  # +1 для случайного эффекта
+v_songbird_uc <- df.residual(glm.songbird_UC)
+u_songbird_uc <- 1
+
+power_songbird_current_uc <- pwr.f2.test(u = u_songbird_uc, v = v_songbird_uc,
+                                      f2 = f2_songbird_UC, sig.level = 0.05)
+print(power_songbird_current_uc)
+```
+
+### Before vs after FMT
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+sample_plot_uc$status[sample_plot_uc$time_point == 1] <- "before"
+sample_plot_uc$status[sample_plot_uc$time_point != 1] <- "after"
+
+sample_plot_uc$status <- factor(sample_plot_uc$status, levels = c("before", "after"))
+
+sample_plot_uc_comb <- ggplot(sample_plot_uc, aes(status, Current_Natural_Log_Ratio))+
+      geom_boxplot()+
+      theme_classic()+
+      xlab("Status")+
+      ylab("Log ratio")+
+      scale_color_manual(values = brewer.pal(name = "Set1", n = 3)[2])+
+      theme(legend.position = "none")
+```
+
+```{r fig.width=4, fig.height=3}
+#| echo: false
+#| message: false
+#| warning: false
+download_this(
+      sample_plot_uc_comb,
+      output_name = "sample_plot_uc_comb",
+      output_extension = ".pdf",
+      button_label = "PDF",
+      button_type = "primary"
+)
+```
+
+```{r fig.width=4, fig.height=3}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-cap: "Figure 19. Songbird log ratio before and after FMT in UC (taxa level)."
+sample_plot_uc_comb
+```
+
+#### Wilcoxon rank-sum test
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+wilcox.test(sample_plot_uc$Current_Natural_Log_Ratio[sample_plot_uc$status == "before"],
+            sample_plot_uc$Current_Natural_Log_Ratio[sample_plot_uc$status == "after"])
+```
+
+#### Linear mixed model
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+lmm.songbird_UC_status <- lmer(Current_Natural_Log_Ratio ~ status + donor_id_manual  + (1 | source_id),
+              data = sample_plot_uc)
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+summary(lmm.songbird_UC_status)
+```
+
+##### Random-effects test (RANOVA)
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+ranova(lmm.songbird_UC_status)
+```
+
+#### Linear model without random effects
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+glm.songbird_UC_status <- glm(Current_Natural_Log_Ratio ~ status + donor_id_manual,
+              data = sample_plot_uc)
+
+glm.songbird_UC_status_without <- glm(Current_Natural_Log_Ratio ~ donor_id_manual,
+              data = sample_plot_uc)
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+summary(glm.songbird_UC_status)
+```
+
+##### Unique variance explained by time (ΔR²)
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+r2_songbird_UC_status <- r2(glm.songbird_UC_status)
+r2_songbird_UC_status_without <- r2(glm.songbird_UC_status_without)
+
+r2_songbird_UC_status$R2 - r2_songbird_UC_status_without$R2
+```
+
+##### Cohen's f² for time
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+f2_songbird_UC_status <- (r2_songbird_UC_status$R2 - r2_songbird_UC_status_without$R2) / (1 - r2_songbird_UC_status$R2)
+
+names(f2_songbird_UC_status) <- NULL
+
+print(f2_songbird_UC_status)
+```
+
+#### Post-hoc power analysis
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+n_songbird_uc_status <- nobs(glm.songbird_UC_status)
+n_params_songbird_uc_status <- length(coef(glm.songbird_UC_status)) + 1  # +1 для случайного эффекта
+v_songbird_uc_status <- df.residual(glm.songbird_UC_status)
+u_songbird_uc_status <- 1
+
+power_songbird_current_uc_status <- pwr.f2.test(u = u_songbird_uc_status, v = v_songbird_uc_status,
+                                      f2 = f2_songbird_UC_status, sig.level = 0.05)
+print(power_songbird_current_uc_status)
+```
+
+# Donor-derived species colonisation (RECAST)
+<p style="text-align: justify;">
+Donor-derived species in recipient samples were identified using RECAST, allowing us to quantify the extent of donor microbiota engraftment at the species level. Since time point 1 represents the pre-FMT baseline, at which donor-derived species are by definition absent, this time point was not included in the colonisation analysis; all analyses therefore reflect post-transplant samples only. The distribution of donor species across recipient samples is shown in Figure 20, the number of reads assigned to each donor species in Figure 21, and the total number of donor-derived species per post-FMT sample in Figure 22.
+<p>
+
+<p style="text-align: justify;">
+Pearson correlation analyses further supported a group-specific pattern. In CD, the number of donor-derived species showed no significant correlation with time point (r = 0.382, p = 0.160, 95% CI [−0.162, 0.748]) or with clinical index (r = 0.416, p = 0.123, 95% CI [−0.123, 0.765]). In UC, by contrast, a significant positive correlation was observed with time point (r = 0.522, p = 0.026, 95% CI [0.073, 0.795]), while the correlation with clinical index was not significant (r = −0.256, p = 0.304, 95% CI [−0.646, 0.239]). These results mirror the mixed-model findings: colonisation increased over time primarily in UC, whereas in CD the trend was positive but statistically indistinguishable from zero.
+<p>
+
+<p style="text-align: justify;">
+A Wilcoxon rank-sum test revealed a significant difference between CD and UC in the number of colonising species (W = 79, p = 0.041), indicating that donor-derived species were detected in different numbers depending on the disease. A linear mixed model with random intercept for patient confirmed a significant positive effect of time point (β = 2.65, p = 0.015), demonstrating that the number of donor-derived species increased progressively after FMT across the pooled cohort. Disease and donor were not significant, but the random effect of source_id was itself significant (LRT = 4.25, p = 0.039), indicating meaningful between-patient variability in baseline colonisation levels.
+<p>
+
+<p style="text-align: justify;">
+To formally test whether the temporal dynamics of colonisation differ between CD and UC, a model with a time_point × disease interaction was fitted and compared to the main-effects model. The interaction was not statistically significant (likelihood ratio test: χ² = 1.76, df = 1, p = 0.185). Estimated marginal trends of time_point showed that the increase in colonising species was significant in UC (trend = 3.33, 95% CI [0.57, 6.08]) but not in CD (trend = 1.66, 95% CI [−1.76, 5.07]); however, the direct contrast between the two slopes was not significant (estimate = −1.67, p = 0.44). The interaction effect size was very small (Cohen's f² = 0.027; marginal R² full = 0.396 vs reduced = 0.379; standardised β for interaction = 0.20, 95% CI [−0.32, 0.73]), and post-hoc power analysis indicated only 13.4% power to detect an interaction of this magnitude at the current sample size (33 observations from 13 patients). Thus, while the numerical increase was steeper in UC, the study was underpowered to establish a significant difference between the two trajectories.
+<p>
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+lab_scores <- read.csv("data/lab_scores.csv", sep = "\t")
+df_colonize <- read.csv("data/colonisation.txt", header = T, stringsAsFactors = F, sep = "\t")
+
+df_colonize$source_id <- factor(df_colonize$source_id, levels = rev(c("CD1", "CD5", "CD16", "CD17", "CD27", "CD28", "CD35", "CD38", 
+                                                                       "UC3", "UC8", "UC15", "UC22", "UC33", "UC36")))
+df_colonize$disease <- factor(df_colonize$disease, levels = c("CD", "UC"))
+
+df_colonize <- df_colonize[order(df_colonize$disease, df_colonize$source_id),]
+
+df_colonize_sbs <- df_colonize[df_colonize$abundance > 100,]
+
+lab_scores <- merge(df_colonize_sbs[-c(9,10)][c(5,1:4,6:8)], lab_scores, by = 1)
+lab_scores <- lab_scores[-2]
+
+df_spread <- spread(lab_scores, species, abundance, fill = 0)
+rownames(df_spread) <- df_spread$df_sample
+df_spread <- df_spread[-2]
+
+df_disease <- df_spread[c(1:11)]
+df_spread <- df_spread[-c(1:11)]
+df_spread <- df_spread[order(colSums(df_spread), decreasing = T)]
+```
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+df_colonize_sbs$donor_id <- sapply(str_split(df_colonize_sbs$donor_id_manual, "_"), function(x) x[1])
+df_colonize_sbs$df_sample <- sapply(str_split(df_colonize_sbs$df_sample, "_B"), function(x) x[1])
+
+target <- c("CD1", 'UC3', "CD5", "UC8", "UC22", "CD35", "UC33", "UC36", "CD38", 
+  "CD16", "CD17", "UC15", "CD27", "CD28")
+
+df_colonize_sbs$source_id <- factor(df_colonize_sbs$source_id, levels = rev(target))
+
+species_samples <- as.data.frame(table(df_colonize_sbs[c("species", "disease")]))
+
+species_samples_CD <- species_samples[species_samples$disease == "CD",]
+species_samples_CD <- species_samples_CD[order(species_samples_CD$Freq, decreasing = T),]
+species_samples_CD <- species_samples_CD[species_samples_CD$Freq > 0,]
+
+species_samples_UC <- species_samples[species_samples$disease == "UC",]
+species_samples_UC <- species_samples_UC[order(species_samples_UC$Freq, decreasing = T),]
+species_samples_UC <- species_samples_UC[species_samples_UC$Freq > 0,]
+
+species_samples_sbs <- rbind(species_samples_UC, species_samples_CD)
+
+species_samples_sbs$negative <- 25-species_samples_sbs$Freq
+species_list <- as.character(species_samples_sbs$species[duplicated(species_samples_sbs$species)])
+
+species_samples_sbs_3 <- as.data.frame(species_samples_sbs %>% group_by(species) %>% summarise(sum = sum(Freq)))
+species_samples_sbs_3 <- species_samples_sbs_3[order(species_samples_sbs_3$sum, decreasing = T),]
+
+species_samples_sbs <- merge(species_samples_sbs_3, species_samples_sbs, by = 1)
+
+species_samples_sbs <- species_samples_sbs[order(species_samples_sbs$sum, decreasing = T),]
+
+df_colonize_sbs <- merge(df_colonize_sbs, 
+      unique(species_samples_sbs[order(species_samples_sbs$sum, decreasing = T),][c(1,2)]), 
+      by = 'species')
+
+CD <- c("CD5_T2", "CD5_T3", "CD16_T2", "CD16_T3", "CD17_T3", "CD17_T4", 
+  "CD27_T2", "CD27_T3", "CD28_T2", "CD28_T4", "CD35_T2", 
+  "CD35_T4", "CD38_T2", "CD38_T4", "CD38_T5")
+
+UC <- c("UC3_T3", "UC3_T5", "UC8_T2", "UC8_T3", "UC15_T2", "UC15_T3", "UC15_T4",
+  "UC15_T5", "UC22_T2", "UC22_T3", "UC22_T4", "UC22_T5", 
+  "UC33_T2", "UC33_T3", "UC33_T4", "UC36_T2", "UC36_T3", "UC36_T4")
+
+df_colonize_sbs$df_sample <- factor(df_colonize_sbs$df_sample, levels = rev(c(CD, UC)))
+
+N_species <- df_colonize_sbs %>%
+      distinct(df_sample, disease, species) %>%
+      count(df_sample, disease, name = "sum_sp")
+```
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+N_samples_plot <- ggplot(species_samples_sbs, aes(reorder(species, -sum), Freq, fill = disease))+
+    geom_bar(stat = "identity", col = "black", width = 0.75)+
+    # coord_flip()+
+    theme_classic()+
+    facet_wrap(~disease, ncol = 1)+
+    theme(axis.text.x = element_text(angle = 90, size = 10, colour = "black", vjust = 0.5, hjust = 1), 
+          axis.title.y = element_text(size = 10), legend.title = element_text(size = 10), 
+          legend.text = element_text(size = 10, colour = "black"), 
+          axis.text.y = element_text(colour = "black", size = 10))+
+    scale_fill_manual(values = c(brewer.pal(name = "Set1", n = 3)[1:2]))+
+    labs(x = "Species", y = "N samples", fill = "Disease")+
+    scale_y_discrete(limits=c("1", "","3", "", "5", "", "7", "", "9", "", "11"))+
+    theme(legend.position = "none")
+```
+
+```{r fig.width=11, fig.height=6.5}
+#| echo: false
+#| message: false
+#| warning: false
+download_this(
+      N_samples_plot,
+      output_name = "N_samples_plot",
+      output_extension = ".pdf",
+      button_label = "PDF",
+      button_type = "primary"
+)
+```
+
+```{r fig.width=11, fig.height=6.5}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-cap: "Figure 20. Donor-derived species detected in recipient samples."
+N_samples_plot
+```
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+colonization_plot <- ggplot(df_colonize_sbs, aes(reorder(species, -sum), df_sample, group = source_id, col = disease, size = abundance)) +
+    geom_point()+
+    theme_bw()+
+    theme(axis.text.x = element_text(angle = 90, size = 10, colour = "black", vjust = 0.5, hjust = 1), 
+          axis.title.y = element_text(size = 10), legend.title = element_text(size = 10), 
+          legend.text = element_text(size = 10, colour = "black"), 
+          axis.text.y = element_text(colour = "black", size = 10))+
+    scale_color_manual(values = c(brewer.pal(name = "Set1", n = 3)[1:2]))+
+    labs(col = "Disease", size = "N reads")+
+    xlab("Species")+
+    ylab("Patient ID")
+```
+
+```{r fig.width=12, fig.height=8}
+#| echo: false
+#| message: false
+#| warning: false
+download_this(
+      colonization_plot,
+      output_name = "colonization_plot",
+      output_extension = ".pdf",
+      button_label = "PDF",
+      button_type = "primary"
+)
+```
+
+```{r fig.width=12, fig.height=8}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-cap: "Figure 21. Abundance of donor-derived species in recipients (reads)."
+colonization_plot
+```
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+N_species_boxplot <- ggplot(N_species, aes(disease, sum_sp, fill = disease))+
+    geom_boxplot()+
+    geom_jitter(width = 0.2, size = 1.5)+
+    theme_classic()+
+    theme(axis.text.x = element_text(size = 12, colour = "black", vjust = 0.5, hjust = 1), 
+          axis.title.y = element_text(size = 11), legend.title = element_text(size = 11), 
+          legend.text = element_text(size = 11, colour = "black"), 
+          axis.text.y = element_text(colour = "black", size = 11))+
+    scale_fill_manual(values = c(brewer.pal(name = "Set1", n = 3)[1:2]))+
+    theme(legend.position = "none")+
+    labs(x = "Disease", y = "Donor-derived species per post-FMT sample")
+```
+
+```{r fig.width=4, fig.height=4}
+#| echo: false
+#| message: false
+#| warning: false
+download_this(
+      N_species_boxplot,
+      output_name = "N_species_boxplot",
+      output_extension = ".pdf",
+      button_label = "PDF",
+      button_type = "primary"
+)
+```
+
+```{r fig.width=4, fig.height=4}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-cap: "Figure 22. Number of donor-derived species per sample by disease."
+N_species_boxplot
+```
+
+## CD vs UC: Wilcoxon rank-sum test
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+wilcox.test(N_species$sum_sp[N_species$disease == "CD"], N_species$sum_sp[N_species$disease == "UC"])
+```
+
+## CD vs UC: linear mixed model
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+metadata_ibd_2 <- metadata_ibd
+
+metadata_ibd_2$df_sample <- sapply(str_split(metadata_ibd_2$df_sample, "_B"), function(x) x[1])
+
+N_species <- merge(metadata_ibd_2, N_species[-2], by = 1)
+
+lmm.N_species <- lmer(sum_sp ~ time_point + disease + donor_id_manual + (1 | source_id), data = N_species)
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+summary(lmm.N_species)
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+ranova(lmm.N_species)
+```
+
+## CD vs UC: interaction model (time × disease)
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+lmm.N_species_2 <- lmer(sum_sp ~ time_point*disease + donor_id_manual + (1 | source_id), data = N_species)
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+emtrends(lmm.N_species_2, pairwise ~ disease, var = "time_point")
+```
+
+### Likelihood ratio test vs main-effects model
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+anova(lmm.N_species_2, lmm.N_species)
+```
+
+### Marginal R²
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+r2_N_species_full <- as.numeric(r2(lmm.N_species_2)$R2_marginal)
+r2_N_species_reduced <- as.numeric(r2(lmm.N_species)$R2_marginal)
+
+print(c(r2_full = r2_N_species_full, r2_reduced = r2_N_species_reduced))
+```
+
+### Cohen's f² for interaction
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+f2_N_species_int <- (r2_N_species_full - r2_N_species_reduced) / (1 - r2_N_species_full)
+print(f2_N_species_int)
+```
+
+### Standardised coefficients
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+standardize_parameters(lmm.N_species_2, method = "refit")
+```
+
+### Post-hoc power analysis
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+power_N_species_simr <- powerSim(lmm.N_species_2,
+                                 test = fixed("time_point:diseaseUC", method = "t"),
+                                 nsim = 1000)
+print(power_N_species_simr)
+```
+
+## CD: correlation with time
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+cor.test(N_species$sum_sp[N_species$disease == "CD"], N_species$time_point[N_species$disease == "CD"])
+```
+
+## CD: correlation with clinical index
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+cor.test(N_species$sum_sp[N_species$disease == "CD"], N_species$clinical_index[N_species$disease == "CD"])
+```
+
+## UC: correlation with time
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+cor.test(N_species$sum_sp[N_species$disease == "UC"], N_species$time_point[N_species$disease == "UC"])
+```
+
+## UC: correlation with clinical index
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+cor.test(N_species$sum_sp[N_species$disease == "UC"], N_species$clinical_index[N_species$disease == "UC"])
+```
+
+# Functional signatures of temporal change (Songbird, KO level)
+<p style="text-align: justify;">
+To complement the taxonomic analysis, functional profiling was performed using HUMAnN, and differential ranking of KEGG Orthology (KO) features by their association with time was carried out with Songbird. As with the taxonomic analysis, the Songbird model was fitted with time point as the primary covariate within each disease group separately, so the resulting KO-level log ratios reflect functional shifts over the follow-up period. Sample-level log ratios were then extracted and used as a quantitative phenotype in downstream analyses.
+<p>
+
+<p style="text-align: justify;">
+At the individual level (Figure 23), the KO-level log ratio in the CD group showed a significant positive correlation with time point (Spearman rho = 0.44, p = 0.029) and a borderline negative correlation with clinical index (rho = −0.36, p = 0.084). A linear mixed model with random intercept for patient confirmed a significant positive effect of time point (β = 0.73, p = 0.0096), while donor levels were not significant. The random effect of source_id accounted for a substantial portion of variance (conditional R² = 0.660), with marginal R² = 0.194 for fixed effects. To quantify the unique contribution of time, ΔR² was computed as the difference between models with and without time_point. Adding time to a model that already included donor explained an additional 14.1% of variance (ΔR² = 0.141), yielding a medium-sized effect (Cohen's f² = 0.175) and a standardised coefficient of 0.50 (95% CI [0.14, 0.85]). Post-hoc power analysis indicated 36.5% power at the current sample size (v = 15 residual df), and approximately 52 observations would be required for 80% power, with a minimum detectable effect of f² = 0.529. Thus, while the temporal effect in CD KO was statistically significant, the study was underpowered to detect it robustly, and the effect size was moderate. At the before/after level (Figure 24), no significant difference was observed between pre- and post-FMT samples (Wilcoxon W = 41, p = 0.17; LMM status β = 1.13, p = 0.11), and the unique contribution of FMT status was small (ΔR² = 0.059, f² = 0.076, power = 20.6%).
+<p>
+
+<p style="text-align: justify;">
+In the UC group (Figure 25), the KO-level log ratio showed strong correlations with both time point (rho = 0.80, p = 2.7×10⁻⁶) and clinical index (rho = −0.48, p = 0.018). A linear mixed model confirmed a highly significant positive effect of time point (β = 1.01, p = 6.5×10⁻⁶), while donor was not significant. The random effect variance for source_id was negligible (LRT = 0, p = 1), indicating that after accounting for time, between-patient variability was minimal. To quantify the unique contribution of time, ΔR² was computed as the difference between models with and without time_point. Adding time to a model that already included donor explained an additional 34.2% of variance (ΔR² = 0.342), yielding an exceptionally large effect (Cohen's f² = 2.417) and a standardised coefficient of 0.61 (95% CI [0.42, 0.79]). Post-hoc power analysis indicated essentially complete power (99.99%) at the current sample size, meaning the temporal change in the UC KO signature is both statistically significant and extremely well-powered. At the before/after level (Figure 26), a significant difference was observed between pre- and post-FMT samples (Wilcoxon W = 18, p = 0.0148; LMM status β = 2.55, p = 0.00077), with a large unique contribution of FMT status (ΔR² = 0.239, f² = 0.982, standardised β = 1.11, 95% CI [0.58, 1.65], power = 98.2%). Thus, the UC KO signature shifted significantly after FMT, with a large effect size and near-complete power.
+<p>
+
+<p style="text-align: justify;">
+Gene set enrichment analysis (GSEA) was performed on the KO-level data to identify functional pathways associated with the observed shifts. In the CD group (Table 8), five KEGG pathways were enriched, predominantly in the downregulated direction: metabolic pathways (ko01100, adj. p = 0.0126), biosynthesis of secondary metabolites (ko01110, adj. p = 0.01512), biosynthesis of antibiotics (ko01130, adj. p = 0.01512), biosynthesis of amino acids (ko01230, adj. p = 0.0216), and ABC transporters (ko02020, adj. p = 0.0252, upregulated direction). In the UC group (Table 9), eight pathways were enriched, predominantly in the upregulated direction: ko02020 (adj. p = 0.0189, downregulated direction), ko00500 (adj. p = 0.0042, up), ko01100 (adj. p = 0.0042, up), ko01110 (adj. p = 0.0042, up), ko01130 (adj. p = 0.0042, up), ko01200 (adj. p = 0.044585, up), ko01230 (adj. p = 0.0042, up), and ko02024 (adj. p = 0.016036, up).
+<p>
+
+<p style="text-align: justify;">
+The functional analysis reveals a more nuanced picture than the taxonomic one. At the KO level, both CD and UC groups showed significant temporal shifts in functional potential, but the magnitude and coherence of the response differed markedly. In UC, time explained 34.2% of additional variance beyond donor (f² = 2.42), with a near-complete power of 99.99%, and the before/after FMT effect was also large and highly significant (ΔR² = 0.239, f² = 0.982, power = 98.2%). In CD, by contrast, the temporal effect was smaller (ΔR² = 0.141, f² = 0.175, power = 36.5%), and the before/after FMT effect was not significant (ΔR² = 0.059, f² = 0.076, power = 20.6%). Moreover, the GSEA results point to distinct functional signatures between the two diseases — CD was dominated by downregulated metabolic and biosynthetic pathways, whereas UC featured broad upregulation of metabolic, biosynthetic, and carbohydrate-related pathways. These findings suggest that the microbial response to FMT combined with standard anti-inflammatory therapy may follow different functional routes in CD and UC, and that functional profiling can capture changes that are not apparent at the taxonomic level: in CD, the taxonomic composition remains stable, but the functional potential does shift over time, albeit weakly. In UC, the functional shift is large, coherent, well-powered, and closely linked to clinical improvement.
+<p>
+
+## Data import
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+ko_pathway.list <- read.csv("data/ko_pathway.list", sep = "\t", header = F)
+ko_pathway.list$V1 <- gsub("ko:", "", ko_pathway.list$V1)
+ko_pathway.list <- ko_pathway.list[which(is.na(str_extract(ko_pathway.list$V2, "map"))),]
+ko_pathway.list$V2 <- gsub("path:", "", ko_pathway.list$V2)
+```
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+sample_plot_cd_KO <- read.csv("output/songbird/sample_plot_cd_KO.tsv", sep = "\t")[c(1,2)]
+sample_plot_cd_KO <- merge(metadata_ibd, sample_plot_cd_KO, by = 1)
+
+sample_plot_uc_KO <- read.csv("output/songbird/sample_plot_uc_KO.tsv", sep = "\t")[c(1,2)]
+sample_plot_uc_KO <- merge(metadata_ibd, sample_plot_uc_KO, by = 1)
+```
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+differentials_KO_CD <- read.csv("output/songbird/differentials_humann2_CD.tsv", sep = "\t")[c(1,8)]
+colnames(differentials_KO_CD) <- c("KO", "effect_size")
+
+cd.rank <- differentials_KO_CD$effect_size
+names(cd.rank) <- differentials_KO_CD$KO
+
+cd.rank <- sort(cd.rank, decreasing = T)
+```
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+differentials_KO_UC <- read.csv("output/songbird/differentials_humann2_UC.tsv", sep = "\t")[c(1,6)]
+colnames(differentials_KO_UC) <- c("KO", "effect_size")
+
+uc.rank <- differentials_KO_UC$effect_size
+names(uc.rank) <- differentials_KO_UC$KO
+
+uc.rank <- sort(uc.rank, decreasing = T)
+```
+
+## Crohn's disease: sample-level trajectories
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+sample_plot_cd_KO$source_id <- factor(sample_plot_cd_KO$source_id, 
+       levels = c("CD1", "CD5", "CD16", "CD17", "CD27", "CD28", "CD35", "CD38"))
+
+sample_plot_cd_KO_ind <- ggplot()+
+    geom_line(sample_plot_cd_KO, mapping = aes(time_point, Current_Natural_Log_Ratio, group = source_id, col = disease), size = 1.2)+
+    geom_hline(yintercept = 0, linetype = 2)+
+    theme_bw()+
+    xlab("Time points")+
+    ylab("Log ratio")+
+    scale_color_brewer(palette="Set1")+
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+    theme(legend.position = "none")+
+    facet_wrap(~source_id, nrow = 1)
+```
+
+```{r fig.width=9, fig.height=2.5}
+#| echo: false
+#| message: false
+#| warning: false
+download_this(
+      sample_plot_cd_KO_ind,
+      output_name = "sample_plot_cd_KO_ind",
+      output_extension = ".pdf",
+      button_label = "PDF",
+      button_type = "primary"
+)
+```
+
+```{r fig.width=9, fig.height=2.5}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-cap: "Figure 23. Songbird log ratio per CD patient over time (KO level)."
+sample_plot_cd_KO_ind
+```
+
+### Correlations with time and clinical index
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+cor.test(sample_plot_cd_KO$Current_Natural_Log_Ratio, sample_plot_cd$time_point, method = "spearman")
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+cor.test(sample_plot_cd_KO$Current_Natural_Log_Ratio, sample_plot_cd$clinical_index, method = "spearman")
+```
+
+### Linear mixed model
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+lmm.songbird_CD_KO <- lmer(Current_Natural_Log_Ratio ~ time_point + donor_id_manual  + (1 | source_id),
+              data = sample_plot_cd_KO)
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+summary(lmm.songbird_CD_KO)
+```
+
+#### Random-effects test (RANOVA)
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+ranova(lmm.songbird_CD_KO)
+```
+
+#### Explained variance (R²)
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+r2_songbird_cd_ko <- r2(lmm.songbird_CD_KO)
+print(r2_songbird_cd_ko)
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+lmm.songbird_CD_KO_without_time <- lmer(Current_Natural_Log_Ratio ~ donor_id_manual  + (1 | source_id),
+              data = sample_plot_cd_KO)
+
+r2_cd_ko_with <- as.numeric(r2(lmm.songbird_CD_KO)$R2_marginal)
+r2_cd_ko_without <- as.numeric(r2(lmm.songbird_CD_KO_without_time)$R2_marginal)
+```
+
+#### Unique variance explained by time (ΔR²)
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+delta_r2_cd_ko <- r2_cd_ko_with - r2_cd_ko_without
+print(delta_r2_cd_ko)
+```
+
+#### Cohen's f² for time
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+f2_cd_ko_time <- delta_r2_cd_ko / (1 - r2_cd_ko_with)
+print(f2_cd_ko_time)
+```
+
+#### Standardised coefficients
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+standardize_parameters(lmm.songbird_CD_KO, method = "refit")
+```
+
+#### Post-hoc power analysis
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+n_cd_ko <- nobs(lmm.songbird_CD_KO)
+n_params_cd_ko <- length(fixef(lmm.songbird_CD_KO))
+v_cd_ko <- df.residual(lmm.songbird_CD_KO)
+u_cd_ko <- 1
+
+power_cd_ko_current <- pwr.f2.test(u = u_cd_ko, v = v_cd_ko,
+                                   f2 = f2_cd_ko_time, sig.level = 0.05)
+print(power_cd_ko_current)
+```
+
+#### Sample size for 80% power
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+power_cd_ko_80 <- pwr.f2.test(u = u_cd_ko, f2 = f2_cd_ko_time,
+                              sig.level = 0.05, power = 0.80)
+n_cd_ko_needed <- ceiling(power_cd_ko_80$v) + n_params_cd_ko
+print(n_cd_ko_needed)
+```
+
+#### Minimum detectable effect size (MDES)
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+mdes_cd_ko <- pwr.f2.test(u = u_cd_ko, v = v_cd_ko,
+                          sig.level = 0.05, power = 0.80)
+print(mdes_cd_ko$f2)
+```
+
+### Before vs after FMT
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+sample_plot_cd_KO$status[sample_plot_cd_KO$time_point == 1] <- "before"
+sample_plot_cd_KO$status[sample_plot_cd_KO$time_point != 1] <- "after"
+
+sample_plot_cd_KO$status <- factor(sample_plot_cd_KO$status, levels = c("before", "after"))
+
+sample_plot_cd_KO_comb <- ggplot(sample_plot_cd_KO, aes(status, Current_Natural_Log_Ratio))+
+      geom_boxplot()+
+      theme_classic()+
+      xlab("Status")+
+      ylab("Log ratio")+
+      scale_color_manual(values = brewer.pal(name = "Set1", n = 3)[1])+
+      theme(legend.position = "none")
+```
+
+```{r fig.width=4, fig.height=3}
+#| echo: false
+#| message: false
+#| warning: false
+download_this(
+      sample_plot_cd_KO_comb,
+      output_name = "sample_plot_cd_KO_comb",
+      output_extension = ".pdf",
+      button_label = "PDF",
+      button_type = "primary"
+)
+```
+
+```{r fig.width=4, fig.height=3}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-cap: "Figure 24. Songbird log ratio before and after FMT in CD (KO level)."
+sample_plot_cd_KO_comb
+```
+
+#### Wilcoxon rank-sum test
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+wilcox.test(sample_plot_cd_KO$Current_Natural_Log_Ratio[sample_plot_cd_KO$status == "before"],
+            sample_plot_cd_KO$Current_Natural_Log_Ratio[sample_plot_cd_KO$status == "after"])
+```
+
+#### Linear model without random effects
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+lmm.songbird_CD_KO_status <- lmer(Current_Natural_Log_Ratio ~ status + donor_id_manual  + (1 | source_id),
+              data = sample_plot_cd_KO)
+
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+summary(lmm.songbird_CD_KO_status)
+```
+
+##### Random-effects test (RANOVA)
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+ranova(lmm.songbird_CD_KO_status)
+```
+
+## Ulcerative colitis: sample-level trajectories
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+sample_plot_uc_KO$source_id <- factor(sample_plot_uc_KO$source_id, levels = c("UC3", "UC8", "UC15", "UC22", "UC33", "UC36"))
+
+sample_plot_uc_KO_ind <- ggplot()+
+    geom_line(sample_plot_uc_KO, mapping = aes(time_point, Current_Natural_Log_Ratio, group = source_id, col = disease), size = 1.2)+
+    geom_hline(yintercept = 0, linetype = 2)+
+    theme_bw()+
+    xlab("Time points")+
+    ylab("Log ratio")+
+    scale_color_manual(values = brewer.pal(name = "Set1", n = 3)[2])+
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+    theme(legend.position = "none")+
+    facet_wrap(~source_id, nrow = 1)
+```
+
+```{r fig.width=9, fig.height=2.5}
+#| echo: false
+#| message: false
+#| warning: false
+download_this(
+      sample_plot_uc_KO_ind,
+      output_name = "sample_plot_uc_KO_ind",
+      output_extension = ".pdf",
+      button_label = "PDF",
+      button_type = "primary"
+)
+```
+
+```{r fig.width=9, fig.height=2.5}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-cap: "Figure 25. Songbird log ratio per UC patient over time (KO level)."
+sample_plot_uc_KO_ind
+```
+
+### Correlations with time and clinical index
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+cor.test(sample_plot_uc$Current_Natural_Log_Ratio, sample_plot_uc$time_point, method = "spearman")
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+cor.test(sample_plot_uc$Current_Natural_Log_Ratio, sample_plot_uc$clinical_index, method = "spearman")
+```
+
+### Linear mixed model
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+lmm.songbird_UC_KO <- lmer(Current_Natural_Log_Ratio ~ time_point + donor_id_manual  + (1 | source_id),
+              data = sample_plot_uc_KO)
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+summary(lmm.songbird_UC_KO)
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+ranova(lmm.songbird_UC)
+```
+
+### Linear model without random effects
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+glm.songbird_UC_KO <- glm(Current_Natural_Log_Ratio ~ time_point + donor_id_manual,
+              data = sample_plot_uc_KO)
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+summary(glm.songbird_UC_KO)
+```
+
+#### Explained variance (R²)
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+glm.songbird_UC_KO_without_time <- glm(Current_Natural_Log_Ratio ~ donor_id_manual,
+                                       data = sample_plot_uc_KO, family = "gaussian")
+```
+
+##### Unique variance explained by time (ΔR²)
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+r2_uc_ko_with_time <- as.numeric(r2(glm.songbird_UC_KO))
+r2_uc_ko_without_time <- as.numeric(r2(glm.songbird_UC_KO_without_time))
+
+delta_r2_uc_ko <- r2_uc_ko_with_time - r2_uc_ko_without_time
+print(delta_r2_uc_ko)
+```
+
+##### R² estimation
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+print(c(r2_full = r2_uc_ko_with_time, r2_reduced = r2_uc_ko_without_time))
+```
+
+##### Cohen's f² for time
+```{r}
+#| echo: false
+#| message: false
+#| warning: true
+f2_uc_ko_time <- delta_r2_uc_ko / (1 - r2_uc_ko_with_time)
+print(f2_uc_ko_time)
+```
+
+##### Standardised coefficients
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+standardize_parameters(glm.songbird_UC_KO, method = "refit")
+```
+
+##### Sample size for 80% power
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+n_uc_ko <- nobs(glm.songbird_UC_KO)
+n_params_uc_ko <- length(coef(glm.songbird_UC_KO))
+v_uc_ko <- df.residual(glm.songbird_UC_KO)
+u_uc_ko <- 1
+
+power_uc_ko_current <- pwr.f2.test(u = u_uc_ko, v = v_uc_ko,
+                                   f2 = f2_uc_ko_time, sig.level = 0.05)
+print(power_uc_ko_current)
+```
+
+#### Before vs after FMT
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+sample_plot_uc_KO$status[sample_plot_uc_KO$time_point == 1] <- "before"
+sample_plot_uc_KO$status[sample_plot_uc_KO$time_point != 1] <- "after"
+
+sample_plot_uc_KO$status <- factor(sample_plot_uc_KO$status, levels = c("before", "after"))
+
+sample_plot_uc_KO_comb <- ggplot(sample_plot_uc_KO, aes(status, Current_Natural_Log_Ratio))+
+      geom_boxplot()+
+      theme_classic()+
+      xlab("Status")+
+      ylab("Log ratio")+
+      scale_color_manual(values = brewer.pal(name = "Set1", n = 3)[2])+
+      theme(legend.position = "none")
+```
+
+```{r fig.width=4, fig.height=3}
+#| echo: false
+#| message: false
+#| warning: false
+download_this(
+      sample_plot_uc_KO_comb,
+      output_name = "sample_plot_uc_KO_comb",
+      output_extension = ".pdf",
+      button_label = "PDF",
+      button_type = "primary"
+)
+```
+
+```{r fig.width=4, fig.height=3}
+#| echo: false
+#| message: false
+#| warning: false
+#| fig-cap: "Figure 26. Songbird log ratio before and after FMT in UC (KO level)."
+sample_plot_uc_KO_comb
+```
+
+#### Wilcoxon rank-sum test
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+wilcox.test(sample_plot_uc_KO$Current_Natural_Log_Ratio[sample_plot_uc_KO$status == "before"],
+            sample_plot_uc_KO$Current_Natural_Log_Ratio[sample_plot_uc_KO$status == "after"])
+```
+
+#### Linear mixed model
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+lmm.songbird_UC_KO_status <- lmer(Current_Natural_Log_Ratio ~ status + donor_id_manual  + (1 | source_id),
+              data = sample_plot_uc_KO)
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+summary(lmm.songbird_UC_KO_status)
+```
+
+##### Random-effect analysis (RANOVA)
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+ranova(lmm.songbird_UC_KO_status)
+```
+
+#### Linear model without random effects
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+glm.songbird_UC_KO_status <- glm(Current_Natural_Log_Ratio ~ status + donor_id_manual,
+              data = sample_plot_uc_KO)
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+summary(glm.songbird_UC_KO_status)
+```
+
+#### Explained variance (R²)
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+glm.songbird_UC_KO_status_without <- glm(Current_Natural_Log_Ratio ~ donor_id_manual,
+                                         data = sample_plot_uc_KO, family = "gaussian")
+```
+
+##### Unique variance explained by time (ΔR²)
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+r2_uc_ko_status_with <- as.numeric(r2(glm.songbird_UC_KO_status))
+r2_uc_ko_status_without <- as.numeric(r2(glm.songbird_UC_KO_status_without))
+
+delta_r2_uc_ko_status <- r2_uc_ko_status_with - r2_uc_ko_status_without
+print(delta_r2_uc_ko_status)
+```
+
+##### R² estimate
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+print(c(r2_full = r2_uc_ko_status_with, r2_reduced = r2_uc_ko_status_without))
+```
+
+##### Cohen's f² for time
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+f2_uc_ko_status <- delta_r2_uc_ko_status / (1 - r2_uc_ko_status_with)
+print(f2_uc_ko_status)
+```
+
+##### Standardised coefficients
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+standardize_parameters(glm.songbird_UC_KO_status, method = "refit")
+```
+
+#### Post-hoc power analysis
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+n_uc_ko_status <- nobs(glm.songbird_UC_KO_status)
+n_params_uc_ko_status <- length(coef(glm.songbird_UC_KO_status))
+v_uc_ko_status <- df.residual(glm.songbird_UC_KO_status)
+u_uc_ko_status <- 1
+
+power_uc_ko_status_current <- pwr.f2.test(u = u_uc_ko_status, v = v_uc_ko_status,
+                                          f2 = f2_uc_ko_status, sig.level = 0.05)
+print(power_uc_ko_status_current)
+```
+
+## Gene set enrichment analysis (KO pathways)
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+myGsc <- loadGSC(ko_pathway.list)
+```
+
+### CD
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+set.seed(10)
+
+gsa.CD <- runGSA(cd.rank, gsc=myGsc, adjMethod = "fdr", nPerm = 9999, geneSetStat = "median")
+gsa.CD.df <- GSAsummaryTable(gsa.CD)[c(1,2,5,7,11,15)]
+
+gsa.CD.df.signif <- rbind(gsa.CD.df[gsa.CD.df$`p adj (dist.dir.dn)` < 0.05,], 
+                          gsa.CD.df[gsa.CD.df$`p adj (dist.dir.up)` < 0.05,])
+
+gsa.CD.df.signif <- gsa.CD.df.signif[gsa.CD.df.signif$`Genes (tot)` > 50,]
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+datatable(gsa.CD.df.signif, 
+          caption = "Table 8. Enriched KEGG pathways in CD (GSEA).",
+          style = "bootstrap5", 
+          extensions = 'Buttons', 
+          options = list(dom = 'lBfrtip',
+                         buttons = c('csv', 'excel')))
+```
+
+### UC
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+set.seed(10)
+
+gsa.UC <- runGSA(uc.rank, gsc=myGsc, adjMethod = "fdr", nPerm = 9999, geneSetStat = "median")
+gsa.UC.df <- GSAsummaryTable(gsa.UC)[c(1,2,5,7,11,15)]
+
+gsa.UC.df.signif <- rbind(gsa.UC.df[gsa.UC.df$`p adj (dist.dir.dn)` < 0.05,], 
+                          gsa.UC.df[gsa.UC.df$`p adj (dist.dir.up)` < 0.05,])
+
+gsa.UC.df.signif <- gsa.UC.df.signif[gsa.UC.df.signif$`Genes (tot)` > 50,]
+```
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+datatable(gsa.UC.df.signif, 
+          caption = "Table 9. Enriched KEGG pathways in UC (GSEA).",
+          style = "bootstrap5", 
+          extensions = 'Buttons', 
+          options = list(dom = 'lBfrtip',
+                         buttons = c('csv', 'excel')))
+```
