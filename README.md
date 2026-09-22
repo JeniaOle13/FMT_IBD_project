@@ -1,5 +1,7 @@
 # FMT-IBD-project
 
+![](https://github.com/JeniaOle13/FMT_IBD_project/blob/main/manuscript/Figure_1.png)
+
 This repository contains the reproducible analysis for the study:
 
 **Dynamic Alterations in Stool Microbiota Composition Following Fecal Transplantation in Patients with Inflammatory Bowel Disease**
