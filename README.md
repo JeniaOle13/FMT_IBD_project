@@ -30,9 +30,22 @@ The project investigates the effects of fecal microbiota transplantation (FMT) o
 
 #### Data and Tools
 
-- Raw metagenomic reads are available in the NCBI repository under project ID [PRJNA763503](https://www.ncbi.nlm.nih.gov/bioproject/763503).
-- The analysis uses the [ASSNAKE](https://github.com/ASSNAKE) pipeline for metagenomic processing and [RECAST](https://github.com/ctlab/recast) for donor‑derived species identification.
-- All analyses were performed in **R** and reported using **Quarto**.
+Raw metagenomic reads are available in the NCBI repository under project ID
+[PRJNA763503](https://www.ncbi.nlm.nih.gov/bioproject/763503).
+
+Metagenomic processing and analysis were performed with the following tools:
+
+**Taxonomic and functional profiling**
+- [MetaPhlAn3](https://github.com/biobakery/metaphlan) (CHOCOPhlAn v201901) — taxonomic profiling
+- [HUMAnN2](https://github.com/biobakery/humann) v2.8.1 — functional profiling (KO level)
+
+**Donor-derived species and compositional analysis**
+- [RECAST](https://github.com/ctlab/RECAST) v1.0.0 — donor-derived species identification
+- [DEICODE](https://github.com/biocore/DEICODE) v0.2.3 — robust Aitchison PCA
+- [Songbird](https://github.com/biocore/songbird) v1.0.3 — differential ranking of taxa and functions
+
+The processing pipeline is based on [ASSNAKE](https://github.com/ASSNAKE).
+All statistical analyses were performed in **R** and reported using **Quarto**.
 
 #### Requirements
 
