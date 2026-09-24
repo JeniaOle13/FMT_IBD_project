@@ -1,0 +1,15 @@
+Subject id	Gender	Disease	Local	Behavior	Disease extension	Manifestation age	Age	Medications history in the last 6 month	Basic therapy	CRP pre-FMT	CRP post-FMT	Calprotectin pre-FMT	Calprotectin post-FMT	HBI pre-FMT	HBI post-FMT	Complications
+CD1	male	Crohn’s disease	L1	B2		29	32	5-ASA	5-ASA, Glucocorticoids	0.1	NA	103	53	5	2	artritis+resection of small intestine
+CD5	male	Crohn’s disease	L3	B1		33	58	5-ASA, Glucocorticoids	5-ASA, Glucocorticoids	11.4	5.7	123	65	38	10	artritis
+CD16	male	Crohn’s disease	L1	B1		41	41	Antidepressants 	5-ASA	3.2	NA	78	24	5	1	resection of rectum
+CD17	male	Crohn’s disease	L1	B2		54	54	Antimicrobials	5-ASA, Glucocorticoids	6.1	0.9	68	32	7	1	
+CD27	female	Crohn’s disease	L1	B1		51	52	Antimicrobials	5-ASA, Glucocorticoids	5.8	3.1	60	21	6	4	artritis
+CD28	male	Crohn’s disease	L1	B1		40	40		5-ASA	5.2	4.3	44	29	5	1	
+CD35	male	Crohn’s disease	L1	B1		34	35	Antimicrobials	5-ASA	3.9	0.8	36	34	5	3	
+CD38	male	Crohn’s disease	L1	B1		21	23	5-ASA, Probiotics	5-ASA	0.33	1.2	51	44	5	2	
+UC3	male	Ulcerative colitis			Е3	20	20	5-ASA	5-ASA	12.7	7.9	314	163	8	4	
+UC8	female	Ulcerative colitis			Е3	28	31	5-ASA	5-ASA	5.2	NA	247	28	6	1	
+UC15	male	Ulcerative colitis			Е1	31	31		5-ASA	6.9	4.6	218	88	7	2	
+UC22	male	Ulcerative colitis			Е3	19	20	5-ASA	5-ASA	1.4	12.3	169	412	6	1	
+UC33	female	Ulcerative colitis			Е3	57	58	5-ASA, Glucocorticoids	5-ASA	8.2	2.1	438	81	7	1	
+UC36	female	Ulcerative colitis			Е1	20	25	5-ASA	5-ASA	1.4	0.8	92	38	6	1	artritis

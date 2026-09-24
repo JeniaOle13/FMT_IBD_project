@@ -722,11 +722,11 @@ print(mrm_model)
 
 # Clinical index dynamics over time
 <p style="text-align: justify;">
-The clinical index was modelled as a function of time point, disease, and donor identity using a linear mixed model with a random intercept for patient (source_id), accounting for repeated measures. The model revealed a highly significant negative effect of time point (β = −1.45, p = 0.00043), indicating that the clinical index decreases over the course of follow-up across all patients. Neither disease (UC vs CD, β = −3.18, p = 0.50) nor any of the donor levels reached statistical significance, suggesting that the temporal decline in clinical index is consistent across disease groups and not attributable to the specific donor. The random effect of source_id was substantial (variance = 37.87, SD = 6.15) and highly significant (LRT = 21.51, p = 3.5e-06), confirming that individual patients differ markedly in their baseline clinical index, which justifies the mixed-model approach.
+The clinical index was modeled as a function of time point, disease, and donor identity using a linear mixed model with a random intercept for patient (source_id), accounting for repeated measures. The model revealed a highly significant negative effect of time point (β = −1.45, p = 0.00043), indicating that the clinical index decreases over the course of follow-up across all patients. Neither disease (UC vs CD, β = −3.18, p = 0.50) nor any of the donor levels reached statistical significance, suggesting that the temporal decline in clinical index is consistent across disease groups and not attributable to the specific donor. The random effect of source_id was substantial (variance = 37.87, SD = 6.15) and highly significant (LRT = 21.51, p = 3.5e-06), confirming that individual patients differ markedly in their baseline clinical index, which justifies the mixed-model approach.
 <p>
 
 <p style="text-align: justify;">
-To quantify the explanatory power and effect size of the model, marginal and conditional R² were computed. Fixed effects (time point, disease, donor) explained 28.0% of the variance in clinical index (marginal R² = 0.280), whereas the full model including the random effect of patient explained 84.3% (conditional R² = 0.843), confirming that individual differences between patients account for the majority of the variation. Standardised coefficients showed that time_point was the only significant predictor (standardised β = −0.32, 95% CI [−0.48, −0.15]), corresponding to a medium-sized effect, whereas disease (standardised β = −0.52, 95% CI [−1.97, 0.93]) and all donor levels had confidence intervals crossing zero. The unique contribution of time_point was further quantified with Cohen's f² = 0.044, indicating a small but statistically significant effect.
+To quantify the explanatory power and effect size of the model, marginal and conditional R² were computed. Fixed effects (time point, disease, donor) explained 28.0% of the variance in clinical index (marginal R² = 0.280), whereas the full model including the random effect of patient explained 84.3% (conditional R² = 0.843), confirming that individual differences between patients account for the majority of the variation. Standardized coefficients showed that time_point was the only significant predictor (standardized β = −0.32, 95% CI [−0.48, −0.15]), corresponding to a medium-sized effect, whereas disease (standardized β = −0.52, 95% CI [−1.97, 0.93]) and all donor levels had confidence intervals crossing zero. The unique contribution of time_point was further quantified with Cohen's f² = 0.044, indicating a small but statistically significant effect.
 <p>
 
 <p style="text-align: justify;">
@@ -1372,15 +1372,15 @@ To place our FMT cohort in the context of an independent IBD reference dataset, 
 <p>
 
 <p style="text-align: justify;">
-For our FMT cohort, we examined the relationship between Axis 1 and time point separately for each disease group. In CD patients, no significant correlation was observed (Spearman rho = 0.23, p = 0.27), whereas in UC patients, a significant negative correlation was found (rho = −0.57, p = 0.004), indicating that UC patients progressively moved along Axis 1 over time, in the direction of the control group. Correlations between Axis 1 and clinical index followed the same pattern: no significant association in CD (rho = −0.33, p = 0.11), but a significant positive correlation in UC (rho = 0.44, p = 0.030), indicating that as clinical status improved, UC patients moved further along Axis 1 towards the control region. A linear mixed model with random intercept for patient confirmed a borderline significant effect of time point on Axis 1 (β = −0.0096, p = 0.054), while disease and donor were not significant. The random effect of source_id was negligible (LRT = 0.37, p = 0.54), suggesting that after accounting for time, between-patient variability in Axis 1 was minimal. A generalised linear model without random effects gave similar estimates, with donor SFM028_T1_B1 reaching significance (β = 0.066, p = 0.036). Individual trajectories of Axis 1 are shown in Figure 12, and the taxa driving Axis 1 are displayed in the loading plot (Figure 13).
+For our FMT cohort, we examined the relationship between Axis 1 and time point separately for each disease group. In CD patients, no significant correlation was observed (Spearman rho = 0.23, p = 0.27), whereas in UC patients, a significant negative correlation was found (rho = −0.57, p = 0.004), indicating that UC patients progressively moved along Axis 1 over time, in the direction of the control group. Correlations between Axis 1 and clinical index followed the same pattern: no significant association in CD (rho = −0.33, p = 0.11), but a significant positive correlation in UC (rho = 0.44, p = 0.030), indicating that as clinical status improved, UC patients moved further along Axis 1 towards the control region. A linear mixed model with random intercept for patient confirmed a significant effect of time point on Axis 1 (β = −0.0104, p = 0.039), while disease and donor were not significant. The random effect of source_id was negligible (LRT = 0.002, p = 0.96), suggesting that after accounting for time, between-patient variability in Axis 1 was minimal. A generalised linear model without random effects gave similar estimates, with donor SFM028_T1_B1 reaching significance (β = 0.091, p = 0.007). Individual trajectories of Axis 1 are shown in Figure 12, and the taxa driving Axis 1 are displayed in the loading plot (Figure 13).
 <p>
 
 <p style="text-align: justify;">
-Given the negligible random-effect variance, explanatory power and effect sizes were quantified using the reduced generalised linear model with interaction. To formally compare the temporal trends between CD and UC, estimated marginal trends of time_point were computed for each group using a model with a time_point × disease interaction. The trend was significant only in UC (trend = −0.0203, 95% CI −0.0327 to −0.0080), whereas in CD it was not distinguishable from zero (trend = 0.0053, 95% CI −0.0087 to 0.0193). The direct contrast between the two slopes was statistically significant (estimate = 0.0256, p = 0.0085), indicating that the direction and rate of change along Axis 1 differ between CD and UC: UC patients shift towards the control region over time, while CD patients do not.
+Given the negligible random-effect variance, explanatory power and effect sizes were quantified using the reduced generalised linear model with interaction. To formally compare the temporal trends between CD and UC, estimated marginal trends of time_point were computed for each group using a model with a time_point × disease interaction. The trend was significant only in UC (trend = −0.0220, 95% CI −0.0339 to −0.0102), whereas in CD it was not distinguishable from zero (trend = 0.0044, 95% CI −0.0089 to 0.0178). The direct contrast between the two slopes was statistically significant (estimate = 0.0264, p = 0.005), indicating that the direction and rate of change along Axis 1 differ between CD and UC: UC patients shift towards the control region over time, while CD patients do not.
 <p>
 
 <p style="text-align: justify;">
-The full model explained 36.2% of the variance in Axis 1 (R² = 0.362), while the model without the interaction explained only 22.9% (R² = 0.229), indicating that the interaction term accounts for a substantial additional portion of variance (13.3%). Standardised coefficients confirmed that the interaction time_point × diseaseUC was the strongest and only significant predictor in the model (standardised β = −0.77, 95% CI [−1.31, −0.23]), corresponding to a large effect. The unique contribution of the interaction was quantified with Cohen's f² = 0.209, indicating a medium-to-large effect. Notably, post-hoc power analysis showed that the current sample (48 observations from 14 patients) provided 79.3% power to detect this interaction, and only 49 observations would be required for 80% power — essentially matching the sample size already available. Unlike the underpowered analyses of Aitchison distance from donor and colonisation, the DEICODE interaction was both statistically significant and adequately powered.
+he full model explained 45.6% of the variance in Axis 1 (R² = 0.456), while the model without the interaction explained only 31.4% (R² = 0.314), indicating that the interaction term accounts for a substantial additional portion of variance (14.2%). Standardised coefficients confirmed that the interaction time_point × diseaseUC was a significant predictor in the model (standardised β = −0.79, 95% CI [−1.31, −0.28]), corresponding to a large effect; disease group and donor identity also showed significant standardised effects. The unique contribution of the interaction was quantified with Cohen's f² = 0.261, indicating a medium-to-large effect. Notably, post-hoc power analysis showed that the current sample (48 observations from 14 patients) provided 85.5% power to detect this interaction, and only 44 observations would be required for 80% power — fewer than the sample size already available. Unlike the underpowered analyses of Aitchison distance from donor and colonisation, the DEICODE interaction was both statistically significant and adequately powered.
 <p>
 
 ```{r}
@@ -1515,6 +1515,8 @@ cor.test(ordination_samples_sbs$Axis_1[ordination_samples_sbs$disease == "UC"],
 #| warning: false
 #| include: false
 ordination_samples_sbs$source_id <- factor(ordination_samples_sbs$source_id, levels = c("CD1", "CD5", "CD16", "CD17", "CD27", "CD28", "CD35", "CD38", "UC3", "UC8", "UC15", "UC22", "UC33", "UC36"))
+
+ordination_samples_sbs <- merge(metadata_songbird[c(1,4,5)], ordination_samples_sbs, by = 1)
 ```
 
 ```{r}
@@ -1605,7 +1607,7 @@ loading_plot_axis_1
 #| message: false
 #| warning: false
 #| include: false
-lmm.axis_1 <- lmer(Axis_1 ~ time_point + disease + donor_id_manual  + (1 | source_id),
+lmm.axis_1 <- lmer(Axis_1 ~ time_point + disease + donor_id_manual + age + gender + (1 | source_id),
               data = ordination_samples_sbs)
 ```
 
@@ -1629,7 +1631,7 @@ ranova(lmm.axis_1)
 #| message: false
 #| warning: false
 #| include: false
-glm.axis_1 <- glm(Axis_1 ~ time_point + disease + donor_id_manual, data = ordination_samples_sbs, family = "gaussian")
+glm.axis_1 <- glm(Axis_1 ~ time_point + disease + donor_id_manual + age + gender, data = ordination_samples_sbs, family = "gaussian")
 ```
 
 ```{r}
@@ -1644,7 +1646,7 @@ summary(glm.axis_1)
 #| message: false
 #| warning: false
 #| include: false
-glm.axis_1_combine <- glm(Axis_1 ~ time_point*disease + donor_id_manual, data = ordination_samples_sbs, family = "gaussian")
+glm.axis_1_combine <- glm(Axis_1 ~ time_point*disease + donor_id_manual + age + gender, data = ordination_samples_sbs, family = "gaussian")
 ```
 
 ```{r}
