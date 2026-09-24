@@ -35,7 +35,7 @@ The project investigates the effects of fecal microbiota transplantation (FMT) o
 
 #### Requirements
 
-- R (≥ 4.6.0)
+- R (≥ 4.6)
 - Quarto (≥ 1.4)
 - R packages listed in the `renv.lock` file (if you use `renv`) or in the script headers.
 
