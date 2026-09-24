@@ -1,4 +1,4 @@
-## FMT‑IBD‑project: Dynamic Alterations in Stool Microbiota Composition Following Fecal Transplantation in Patients with Inflammatory Bowel Disease
+# FMT‑IBD‑project: Dynamic Alterations in Stool Microbiota Composition Following Fecal Transplantation in Patients with Inflammatory Bowel Disease
 
 [![Quarto](https://img.shields.io/badge/Quarto-Report-blue)](https://jeniaole13.github.io/FMT_IBD_project/)
 [![R](https://img.shields.io/badge/R-4.6%2B-276DC3)](https://www.r-project.org/)
@@ -10,7 +10,7 @@ The project investigates the effects of fecal microbiota transplantation (FMT) o
 
 📄 **Full Quarto report:** [https://jeniaole13.github.io/FMT_IBD_project/](https://jeniaole13.github.io/FMT_IBD_project/)
 
-#### Project Structure
+## Project Structure
 | Path | Description |
 |------|-------------|
 | `data/` | Raw and processed data files |
@@ -22,13 +22,14 @@ The project investigates the effects of fecal microbiota transplantation (FMT) o
 | `main.qmd` | Main Quarto document (reproduces all analyses) |
 | `README.md` | This file |
 
-#### Exploratory Findings
+## Exploratory Findings
+
 > **Note:** The results below are exploratory and hypothesis-generating. They should be interpreted with caution and require confirmation in independent cohorts.
 
 - In exploratory analyses, UC patients showed a shift of the gut microbiota towards the donor and towards healthy controls, with temporal changes in taxonomic and functional profiles.
 - CD patients showed less pronounced taxonomic restructuring despite comparable clinical improvement, with only a weak functional signal.
 
-#### Data and Tools
+## Data and Tools
 
 Raw metagenomic reads are available in the NCBI repository under project ID
 [PRJNA763503](https://www.ncbi.nlm.nih.gov/bioproject/763503).
@@ -47,12 +48,12 @@ Metagenomic processing and analysis were performed with the following tools:
 The processing pipeline is based on [ASSNAKE](https://github.com/ASSNAKE).
 All statistical analyses were performed in **R** and reported using **Quarto**.
 
-#### Requirements
+## Requirements
 
 - R (≥ 4.6)
 - Quarto (≥ 1.4)
 
-#### R Packages
+## R Packages
 
 The analysis uses the following R packages:
 
@@ -66,7 +67,7 @@ The analysis uses the following R packages:
 Compositional data analysis is handled by the project's own
 `src/mini_compositions_lib.R` (see below).
 
-#### Mini Compositions Library
+## Mini Compositions Library
 
 The file `src/mini_compositions_lib.R` contains a self-contained mini-library
 for compositional data analysis, originally written by J. J. Egozcue (2017,
@@ -89,17 +90,17 @@ The library is sourced directly in the analysis scripts:
 source("src/mini_compositions_lib.R")
 ```
 
-#### Installation
+## Installation
 
 1. Clone the repository:
    ```bash
    git clone https://github.com/JeniaOle13/FMT_IBD_project.git
    cd FMT_IBD_project
 
-#### Contact
+## Contact
 
 For questions, please contact [Evgenii I. Olekhnovich](mailto:jeniaole01@gmail.com).
 
-#### License
+## License
 
 This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
