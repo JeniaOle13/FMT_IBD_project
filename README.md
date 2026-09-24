@@ -49,3 +49,7 @@ The project investigates the effects of fecal microbiota transplantation (FMT) o
 #### Contact
 
 For questions, please contact [Evgenii I. Olekhnovich](mailto:jeniaole01@gmail.com).
+
+#### License
+
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
