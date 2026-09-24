@@ -70,7 +70,7 @@ Compositional data analysis is handled by the project's own
 ## Mini Compositions Library
 
 The file `src/mini_compositions_lib.R` contains a self-contained mini-library
-for compositional data analysis, originally written by J. J. Egozcue (2017,
+for compositional data analysis, originally written by [Juan José Egozcue](https://scholar.google.com/citations?user=pyM9DJ8AAAAJ&hl=en) (2017,
 revised August 2017). It provides ilr/clr transformations, variation matrices,
 principal balances, and related utilities as an alternative to the
 `compositions` package, avoiding its object-oriented overhead in simple scripts.
