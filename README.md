@@ -4,6 +4,8 @@ This repository contains the reproducible analysis for the study:
 
 **Dynamic Alterations in Stool Microbiota Composition Following Fecal Transplantation in Patients with Inflammatory Bowel Disease**
 
+![](https://github.com/JeniaOle13/FMT_IBD_project/blob/main/manuscript/Figure_1.png)
+
 Quarto report available [here](https://jeniaole13.github.io/FMT_IBD_project/)
 
 The project investigates the effects of fecal microbiota transplantation (FMT) on the gut microbiota of patients with inflammatory bowel disease (IBD), focusing on differences between Crohn's disease (CD) and ulcerative colitis (UC) within one month after FMT.
