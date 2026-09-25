@@ -1,4 +1,4 @@
-# FMT‑IBD‑project: Dynamic Alterations in Stool Microbiota Composition Following Fecal Transplantation in Patients with Inflammatory Bowel Disease
+# FMT‑IBD‑project
 
 [![Quarto](https://img.shields.io/badge/Quarto-Report-blue)](https://jeniaole13.github.io/FMT_IBD_project/)
 [![R](https://img.shields.io/badge/R-4.6%2B-276DC3)](https://www.r-project.org/)
