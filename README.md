@@ -64,32 +64,6 @@ The analysis uses the following R packages:
 - **Power analysis:** `simr`, `pwr`
 - **Gene set analysis:** `piano`
 
-Compositional data analysis is handled by the project's own
-`src/mini_compositions_lib.R` (see below).
-
-## Mini Compositions Library
-
-The file `src/mini_compositions_lib.R` contains a self-contained mini-library
-for compositional data analysis, originally written by [Juan José Egozcue](https://scholar.google.com/citations?user=pyM9DJ8AAAAJ&hl=en) (2017,
-revised August 2017). It provides ilr/clr transformations, variation matrices,
-principal balances, and related utilities as an alternative to the
-`compositions` package, avoiding its object-oriented overhead in simple scripts.
-
-Key functions include:
-
-- `mclr(x)`, `milr(x, V)`, `milrInv(z, V)` — clr and ilr transformations
-- `mbuildcontrast(W)` — build contrast matrices from sequential binary partitions
-- `mvariation(x)`, `mvariatzeros(X)` — variation matrices (with zero handling)
-- `mPBclustvar(x)`, `mmerge2sign(Merge)` — principal balances via clustering
-- `mcountsprop(X)` — multinomial proportion estimation from counts
-- `mBPPOP(...)` — biplot of centered clr with SVD
-
-The library is sourced directly in the analysis scripts:
-
-```r
-source("src/mini_compositions_lib.R")
-```
-
 ## Installation
 
 1. Clone the repository:
