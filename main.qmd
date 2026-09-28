@@ -2,7 +2,6 @@
 format: html
 editor: source
 ---
-
 ```{r}
 #| message: false
 #| warning: false
@@ -52,8 +51,7 @@ library(piano)
 library(effectsize)
 library(simr)
 library(pwr)
-
-source("src/mini_compositions_lib.R")
+library(compositions)
 ```
 
 # Study design and analytical workflow 
@@ -548,7 +546,7 @@ mpa.org.sbs <- filter_zeros(mpa.org, 0.8)
 
 mpa.org_subs_zeros <- mpa.org.sbs + 1
 
-mpa.org_clr <- mclr(mpa.org_subs_zeros)
+mpa.org_clr <- clr(mpa.org_subs_zeros)
 mpa.org_clr_dist <- dist(mpa.org_clr)
 
 coda.mds <- cmdscale(mpa.org_clr_dist)
